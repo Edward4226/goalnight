@@ -1,0 +1,47 @@
+# os
+.DS_Store
+Thumbs.db
+Icon?
+
+# editor
+.vscode/
+.idea/
+.zed/
+*.swp
+*~
+
+# logs
+*.log
+npm-debug.log*
+
+# env
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+dist/
+build/
+
+# rust
+target/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# cli tools (local AI assistant configs — never commit)
+CLAUDE.md
+.claude/
+AGENTS.md
+AGENTS.override.md
+
+# caches
+.cache/
+.turbo/
+
+# personal
+personal/
