@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   objective            TEXT NOT NULL,
   hours                INTEGER NOT NULL,         -- requested sleep/runtime hours
   target_quota_pct     REAL DEFAULT 0.8,
+  quiet_hours          TEXT,                     -- e.g. "22:00-07:00" local time; null = no quiet hours
   token_budget         INTEGER,                  -- computed budget passed to codex /goal
   tokens_used          INTEGER DEFAULT 0,        -- accumulated via PostToolUse hook
   state                TEXT DEFAULT 'planned',   -- planned|active|usage_limited|blocked|paused|complete
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS decisions (
   recommendation  TEXT,                         -- model's recommended choice
   reasoning       TEXT,                         -- model's reasoning
   blocking        INTEGER DEFAULT 0,            -- 0/1: does this block progress?
+  uncertain       INTEGER DEFAULT 0,            -- 0 = confident, 1 = agent flagged this call as a guess
   resolved        INTEGER DEFAULT 0,            -- 0/1
   resolution      TEXT,                         -- user's final choice (v0.2 interactive)
   resolved_at     INTEGER,

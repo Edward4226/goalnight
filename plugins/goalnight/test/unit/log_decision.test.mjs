@@ -89,3 +89,49 @@ test('log_decision attaches to the most recent session', async () => {
   const r = await logDecision({ question: 'belongs where?' });
   assert.equal(r.session_id, second.session_id);
 });
+
+test('log_decision (uncertain=true) persists uncertain=1, blocking=0, fires NO notify', async () => {
+  await withSession();
+  const r = await logDecision({
+    question: 'Postgres or SQLite for the new feature?',
+    recommendation: 'Postgres',
+    reasoning: 'prod already runs Postgres',
+    uncertain: true,
+  });
+  const row = getDb().prepare('SELECT * FROM decisions WHERE id = ?').get(r.id);
+  assert.equal(row.uncertain, 1);
+  assert.equal(row.blocking, 0);
+  assert.equal(row.resolved, 0);
+  assert.equal(readNotifyLog(notifyPath).length, 0);
+});
+
+test('log_decision (uncertain omitted / false) persists uncertain=0', async () => {
+  await withSession();
+  const a = await logDecision({ question: 'q omitted' });
+  const b = await logDecision({ question: 'q false', uncertain: false });
+  const rowA = getDb().prepare('SELECT uncertain FROM decisions WHERE id = ?').get(a.id);
+  const rowB = getDb().prepare('SELECT uncertain FROM decisions WHERE id = ?').get(b.id);
+  assert.equal(rowA.uncertain, 0);
+  assert.equal(rowB.uncertain, 0);
+});
+
+test('log_decision precedence: blocking + uncertain both true → blocking wins, uncertain=0', async () => {
+  await withSession();
+  const r = await logDecision({
+    question: 'drop the legacy table?',
+    blocking: true,
+    uncertain: true,
+  });
+  const row = getDb().prepare('SELECT blocking, uncertain FROM decisions WHERE id = ?').get(r.id);
+  assert.equal(row.blocking, 1);
+  assert.equal(row.uncertain, 0);
+  // Blocking notify still fires.
+  assert.equal(readNotifyLog(notifyPath).length, 1);
+});
+
+test('log_decision rejects non-boolean uncertain / blocking', async () => {
+  await withSession();
+  await assert.rejects(() => logDecision({ question: 'q', uncertain: 'yes' }), /uncertain must be a boolean/);
+  await assert.rejects(() => logDecision({ question: 'q', uncertain: 1 }), /uncertain must be a boolean/);
+  await assert.rejects(() => logDecision({ question: 'q', blocking: 'true' }), /blocking must be a boolean/);
+});

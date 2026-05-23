@@ -19,6 +19,19 @@ import { getDb, uuid, now } from '../db/client.js';
 
 const DEFAULT_QUOTA = parseInt(process.env.GOALNIGHT_QUOTA_PER_PERIOD || '200000', 10);
 
+const QUIET_HOURS_RE = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/;
+
+function validateQuietHours(raw) {
+  const m = QUIET_HOURS_RE.exec(raw);
+  if (!m) throw new Error('quiet_hours must match "HH:MM-HH:MM" (24h)');
+  const [, sh, sm, eh, em] = m.map(Number);
+  for (const [h, mm] of [[sh, sm], [eh, em]]) {
+    if (h < 0 || h > 23 || mm < 0 || mm > 59) {
+      throw new Error('quiet_hours endpoints must be in 00:00–23:59');
+    }
+  }
+}
+
 export const planNightSchema = {
   description: `Plan an overnight goal session and persist it.
 
@@ -49,6 +62,10 @@ survive context compaction.`,
         items: { type: 'string' },
         description: 'Ordered list of milestone titles (3-8 recommended).',
       },
+      quiet_hours: {
+        type: 'string',
+        description: 'Optional local-time window during which non-critical notifications are suppressed. Format: "HH:MM-HH:MM" (24h). Examples: "22:00-07:00" (overnight), "13:00-14:00" (lunch). Notifications outside the window fire normally. Critical notifications (system failures, destructive-action approvals) ALWAYS fire regardless of window.',
+      },
     },
     required: ['objective', 'milestones'],
   },
@@ -59,6 +76,7 @@ export async function planNight(args) {
   const hours = args.hours ?? 8;
   const targetPct = args.target_quota_pct ?? 0.8;
   const milestones = args.milestones ?? [];
+  const quietHours = args.quiet_hours ?? null;
 
   if (!objective) throw new Error('objective is required');
   if (!Array.isArray(milestones) || milestones.length === 0) {
@@ -67,20 +85,27 @@ export async function planNight(args) {
   if (targetPct <= 0 || targetPct > 1) {
     throw new Error('target_quota_pct must be in (0, 1]');
   }
+  if (quietHours !== null && quietHours !== undefined) {
+    validateQuietHours(quietHours);
+  }
 
   const tokenBudget = Math.round((hours / 5) * DEFAULT_QUOTA * targetPct);
   const tokensPerMilestone = Math.round(tokenBudget / milestones.length);
 
   const db = getDb();
+  // Backward-compat: existing DBs may lack the quiet_hours column. ALTER is
+  // idempotent — sqlite throws on duplicate add, which the catch swallows.
+  try { db.exec('ALTER TABLE sessions ADD COLUMN quiet_hours TEXT'); } catch {}
+
   const sessionId = uuid();
   const ts = now();
 
   const insertSession = db.prepare(`
     INSERT INTO sessions
-      (id, objective, hours, target_quota_pct, token_budget, state, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'planned', ?, ?)
+      (id, objective, hours, target_quota_pct, quiet_hours, token_budget, state, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'planned', ?, ?)
   `);
-  insertSession.run(sessionId, objective, hours, targetPct, tokenBudget, ts, ts);
+  insertSession.run(sessionId, objective, hours, targetPct, quietHours, tokenBudget, ts, ts);
 
   const insertMilestone = db.prepare(`
     INSERT INTO milestones (id, session_id, title, estimated_tokens, ordinal, created_at)

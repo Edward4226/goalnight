@@ -10,6 +10,12 @@
 import { getDb, uuid, now } from '../db/client.js';
 import { notify } from '../notifications/index.js';
 
+// Backward-compat: DBs created before v0.1.1 lack the `uncertain` column.
+// SQLite throws on duplicate-column add → try/catch swallows. Idempotent.
+function ensureUncertainColumn(db) {
+  try { db.exec('ALTER TABLE decisions ADD COLUMN uncertain INTEGER DEFAULT 0'); } catch {}
+}
+
 export const logDecisionSchema = {
   description: `Log a decision point that normally would require the user's call.
 
@@ -52,6 +58,11 @@ Aim for 1-3 decisions per overnight goal — anything more means you're overusin
         description: 'If true, this blocks further progress until user resolves it.',
         default: false,
       },
+      uncertain: {
+        type: 'boolean',
+        description: 'Set to true when the model made a judgment call but flags it for human review (not blocking, just "double-check this"). Different from `blocking=true` which queues a question the model REFUSED to answer alone. Use this for "I picked Postgres but you might prefer SQLite" — not for "should I delete prod data?". Default false.',
+        default: false,
+      },
     },
     required: ['question'],
   },
@@ -59,8 +70,16 @@ Aim for 1-3 decisions per overnight goal — anything more means you're overusin
 
 export async function logDecision(args) {
   if (!args.question) throw new Error('question is required');
+  if (args.uncertain !== undefined && typeof args.uncertain !== 'boolean') {
+    throw new Error('uncertain must be a boolean');
+  }
+  if (args.blocking !== undefined && typeof args.blocking !== 'boolean') {
+    throw new Error('blocking must be a boolean');
+  }
 
   const db = getDb();
+  ensureUncertainColumn(db);
+
   const session = db
     .prepare('SELECT id FROM sessions ORDER BY updated_at DESC, rowid DESC LIMIT 1')
     .get();
@@ -68,12 +87,18 @@ export async function logDecision(args) {
     throw new Error('No active session. Call gn_plan_night first.');
   }
 
+  // Precedence: blocking wins. If both are set, the user needs to act NOW —
+  // treating it as merely "uncertain" would understate urgency and double-count
+  // the same row across two brief sections.
+  const isBlocking = !!args.blocking;
+  const isUncertain = !isBlocking && !!args.uncertain;
+
   const id = uuid();
   const ts = now();
   db.prepare(
     `INSERT INTO decisions
-       (id, session_id, question, options, recommendation, reasoning, blocking, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, session_id, question, options, recommendation, reasoning, blocking, uncertain, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     session.id,
@@ -81,11 +106,12 @@ export async function logDecision(args) {
     args.options ? JSON.stringify(args.options) : null,
     args.recommendation ?? null,
     args.reasoning ?? null,
-    args.blocking ? 1 : 0,
+    isBlocking ? 1 : 0,
+    isUncertain ? 1 : 0,
     ts
   );
 
-  if (args.blocking) {
+  if (isBlocking) {
     notify({
       type: 'blocking-decision',
       title: 'Decision needs your call',

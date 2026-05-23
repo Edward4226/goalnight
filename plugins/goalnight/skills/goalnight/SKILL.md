@@ -30,10 +30,11 @@ You have access to the **goalnight** plugin: a thin layer that makes Codex `/goa
 User says something like `goalnight 8h, implement user-profile feature` or `@goalnight plan 8h to <goal>`.
 
 1. **First, break the goal into 3-8 ordered milestones in your head.** Plan thoughtfully — these get persisted and will guide your work all night.
-2. Call `gn_plan_night({ objective, hours, milestones: [...] })`.
-3. The response has a `codex_goal_command` field. **Execute it** — this hands the objective to codex's native `/goal` system.
-4. Reply to the user in ONE LINE: `Planned. {N} milestones. Budget: {tokens} tokens. Dashboard: {url}. Good night.`
-5. Stop. The user closes the laptop.
+2. **If the user mentions wanting quiet hours, a do-not-disturb window, or "don't wake me up"** (e.g. "quiet hours 22:00-07:00", "don't ping me overnight"), extract a `quiet_hours` argument in `"HH:MM-HH:MM"` 24-hour format. Omit if not stated. Non-critical notifications inside the window are suppressed and surface in the morning brief instead.
+3. Call `gn_plan_night({ objective, hours, milestones: [...], quiet_hours? })`.
+4. The response has a `codex_goal_command` field. **Execute it** — this hands the objective to codex's native `/goal` system.
+5. Reply to the user in ONE LINE: `Planned. {N} milestones. Budget: {tokens} tokens. Dashboard: {url}. Good night.`
+6. Stop. The user closes the laptop.
 
 ### Phase 2: During execution (every continuation turn)
 
@@ -44,6 +45,13 @@ Codex auto-continues the goal turn by turn. On each turn:
 3. When you finish a real milestone (not a sub-step), the post_tool_use hook will eventually mark it done. You don't need to explicitly mark it — but you can if you're confident.
 4. **When you discover something noteworthy** (existing implementation in repo, hidden bug, prod risk, weird convention): call `gn_log_finding({ type, content, severity })`. Aim for 0-5 findings per session.
 5. **When you would otherwise ask the user but they're asleep**: call `gn_log_decision({ question, options, recommendation, reasoning })` then proceed with your recommendation. Aim for 1-3 decisions per session.
+
+#### `gn_log_decision` urgency flags
+
+- **`blocking=true`** — you would REFUSE to proceed without an answer. Surfaces in the brief's "Decisions waiting" section and fires a sound notification. Use sparingly: schema/destructive-data calls, irreversible architectural forks.
+- **`uncertain=true`** — you DID proceed, but flag the call for human review. Surfaces in the brief's separate "Decisions you might want to review" section. No notification (quiet by design). Use whenever you make a judgment call you can imagine the user disagreeing with: library choice, naming, file placement, minor architectural fork.
+- **Neither flag** — confident, routine choice. Still logged for audit but de-emphasized.
+- **Don't set both** — `blocking` implies more urgency and wins; the row will be persisted as blocking only.
 
 ### Phase 3: User wakes up
 

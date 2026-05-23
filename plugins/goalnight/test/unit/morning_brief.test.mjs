@@ -14,7 +14,7 @@ afterEach(() => { cleanupDb(dataDir); });
 const KEYS = [
   'summary_one_liner', 'status', 'objective', 'duration_human', 'tokens_used',
   'token_budget', 'milestones_done', 'milestones_pending',
-  'decisions_awaiting', 'findings_highlights', 'markdown',
+  'decisions_awaiting', 'uncertain_decisions', 'findings_highlights', 'markdown',
 ];
 
 test('morning_brief returns full shape + handles empty state (no decisions/findings)', async () => {
@@ -27,12 +27,14 @@ test('morning_brief returns full shape + handles empty state (no decisions/findi
   assert.equal(brief.milestones_pending.length, 3);
   assert.equal(brief.milestones_done.length, 0);
   assert.equal(brief.decisions_awaiting.length, 0);
+  assert.equal(brief.uncertain_decisions.length, 0);
   assert.equal(brief.findings_highlights.length, 0);
 
   // Empty-state markdown: no empty Decisions/Findings sections, but Pending block present.
   assert.match(brief.markdown, /goalnight — morning brief/);
   assert.match(brief.markdown, /Goal:.*ship the feature/);
   assert.doesNotMatch(brief.markdown, /Decisions waiting/);
+  assert.doesNotMatch(brief.markdown, /Decisions you might want to review/);
   assert.doesNotMatch(brief.markdown, /Notable findings/);
   assert.match(brief.markdown, /Pending \(3\)/);
 });
@@ -92,4 +94,99 @@ test('morning_brief by session_id returns that specific session', async () => {
   const b = await planNight({ objective: 'session B', milestones: ['n'] });
   assert.equal((await morningBrief({ session_id: a.session_id })).objective, 'session A');
   assert.equal((await morningBrief({ session_id: b.session_id })).objective, 'session B');
+});
+
+test('morning_brief: no uncertain decisions → uncertain_decisions=[] and section omitted', async () => {
+  await planNight({ objective: 'no uncertainty', milestones: ['m'] });
+  await logDecision({ question: 'plain choice' });
+  const brief = await morningBrief({});
+  assert.deepEqual(brief.uncertain_decisions, []);
+  assert.doesNotMatch(brief.markdown, /Decisions you might want to review/);
+});
+
+test('morning_brief: 2 uncertain decisions render in dedicated section', async () => {
+  await planNight({ objective: 'with doubts', milestones: ['m'] });
+  await logDecision({
+    question: 'Postgres or SQLite?',
+    recommendation: 'Postgres',
+    reasoning: 'prod uses it',
+    uncertain: true,
+  });
+  await logDecision({
+    question: 'Camel or snake for new fields?',
+    recommendation: 'snake_case',
+    reasoning: 'matches surrounding code',
+    uncertain: true,
+  });
+
+  const brief = await morningBrief({});
+  assert.equal(brief.uncertain_decisions.length, 2);
+  assert.match(brief.markdown, /Decisions you might want to review \(2\)/);
+  assert.match(brief.markdown, /Postgres or SQLite\?/);
+  assert.match(brief.markdown, /Camel or snake for new fields\?/);
+  assert.match(brief.markdown, /\*\*Chose:\*\* Postgres/);
+  assert.match(brief.markdown, /\*\*Chose:\*\* snake_case/);
+  assert.match(brief.markdown, /prod uses it/);
+  // one-liner mentions uncertain count
+  assert.match(brief.summary_one_liner, /2 to double-check/);
+});
+
+test('morning_brief: mixed 1 blocking + 2 uncertain → split cleanly, no cross-contamination', async () => {
+  await planNight({ objective: 'mixed', milestones: ['m'] });
+  await logDecision({
+    question: 'BLOCK: drop legacy table?',
+    recommendation: 'drop',
+    blocking: true,
+  });
+  await logDecision({
+    question: 'UNC: use lib X?',
+    recommendation: 'X',
+    uncertain: true,
+  });
+  await logDecision({
+    question: 'UNC: name it Foo?',
+    recommendation: 'Foo',
+    uncertain: true,
+  });
+
+  const brief = await morningBrief({});
+  assert.equal(brief.decisions_awaiting.length, 1);
+  assert.equal(brief.decisions_awaiting[0].question, 'BLOCK: drop legacy table?');
+  assert.equal(brief.uncertain_decisions.length, 2);
+  for (const u of brief.uncertain_decisions) {
+    assert.ok(u.question.startsWith('UNC:'), `uncertain row leaked into blocking: ${u.question}`);
+  }
+  // The blocking question must NOT appear under "Decisions you might want to review",
+  // and the uncertain questions must NOT appear under "Decisions waiting".
+  const md = brief.markdown;
+  const waitingIdx = md.indexOf('Decisions waiting');
+  const reviewIdx = md.indexOf('Decisions you might want to review');
+  assert.ok(waitingIdx >= 0 && reviewIdx > waitingIdx, 'review section comes after waiting');
+  const waitingBlock = md.slice(waitingIdx, reviewIdx);
+  const reviewBlock = md.slice(reviewIdx);
+  assert.match(waitingBlock, /BLOCK: drop legacy table/);
+  assert.doesNotMatch(waitingBlock, /UNC: use lib X/);
+  assert.doesNotMatch(waitingBlock, /UNC: name it Foo/);
+  assert.match(reviewBlock, /UNC: use lib X/);
+  assert.match(reviewBlock, /UNC: name it Foo/);
+  assert.doesNotMatch(reviewBlock, /BLOCK: drop legacy table/);
+  // one-liner mentions both counts
+  assert.match(brief.summary_one_liner, /1 decision need you/);
+  assert.match(brief.summary_one_liner, /2 to double-check/);
+});
+
+test('morning_brief: resolved uncertain decisions do NOT surface', async () => {
+  const p = await planNight({ objective: 'cleanup', milestones: ['m'] });
+  const r = await logDecision({
+    question: 'pick one',
+    recommendation: 'A',
+    uncertain: true,
+  });
+  // Mark as resolved.
+  getDb().prepare('UPDATE decisions SET resolved = 1 WHERE id = ?').run(r.id);
+
+  const brief = await morningBrief({ session_id: p.session_id });
+  assert.equal(brief.uncertain_decisions.length, 0);
+  assert.doesNotMatch(brief.markdown, /Decisions you might want to review/);
+  assert.doesNotMatch(brief.summary_one_liner, /double-check/);
 });

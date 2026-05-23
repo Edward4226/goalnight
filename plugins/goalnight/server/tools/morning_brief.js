@@ -4,10 +4,11 @@
  * Designed for low-judgement-load reading: a tired user must understand the
  * state in 5 seconds. Layout:
  *   1. One-liner summary
- *   2. ⚠️ Decisions waiting (the most important block)
- *   3. ✅ Done milestones
- *   4. ⏳ Pending milestones
- *   5. 📝 Notable findings
+ *   2. ⚠️ Decisions waiting (the most important block — blocking + unflagged)
+ *   3. 🤔 Decisions you might want to review (agent-flagged uncertain calls)
+ *   4. ✅ Done milestones
+ *   5. ⏳ Pending milestones
+ *   6. 📝 Notable findings
  */
 
 import { getDb } from '../db/client.js';
@@ -50,14 +51,33 @@ export async function morningBrief(args) {
   const milestonesDone = milestones.filter(m => m.state === 'done');
   const milestonesPending = milestones.filter(m => m.state !== 'done');
 
-  const decisions = db
-    .prepare(
-      `SELECT question, recommendation, reasoning, blocking
-       FROM decisions
-       WHERE session_id = ? AND resolved = 0
-       ORDER BY blocking DESC, created_at`
-    )
-    .all(session.id);
+  // Old DBs (pre-v0.1.1) may lack the `uncertain` column. Detect once per call.
+  const hasUncertainCol = db
+    .prepare("SELECT 1 FROM pragma_table_info('decisions') WHERE name = 'uncertain'")
+    .get();
+
+  const decisions = hasUncertainCol
+    ? db.prepare(
+        `SELECT question, recommendation, reasoning, blocking
+         FROM decisions
+         WHERE session_id = ? AND resolved = 0 AND uncertain = 0
+         ORDER BY blocking DESC, created_at`
+      ).all(session.id)
+    : db.prepare(
+        `SELECT question, recommendation, reasoning, blocking
+         FROM decisions
+         WHERE session_id = ? AND resolved = 0
+         ORDER BY blocking DESC, created_at`
+      ).all(session.id);
+
+  const uncertainDecisions = hasUncertainCol
+    ? db.prepare(
+        `SELECT question, recommendation, reasoning, created_at
+         FROM decisions
+         WHERE session_id = ? AND uncertain = 1 AND resolved = 0
+         ORDER BY created_at DESC`
+      ).all(session.id)
+    : [];
 
   const findings = db
     .prepare(
@@ -77,7 +97,7 @@ export async function morningBrief(args) {
   const mins = Math.floor((durationSec % 3600) / 60);
   const durationHuman = `${hours}h ${mins}m`;
 
-  const summary = buildOneLiner(session, milestones, milestonesDone, decisions);
+  const summary = buildOneLiner(session, milestones, milestonesDone, decisions, uncertainDecisions);
 
   const data = {
     summary_one_liner: summary,
@@ -89,6 +109,7 @@ export async function morningBrief(args) {
     milestones_done: milestonesDone,
     milestones_pending: milestonesPending,
     decisions_awaiting: decisions,
+    uncertain_decisions: uncertainDecisions,
     findings_highlights: findings,
   };
 
@@ -103,25 +124,28 @@ export async function morningBrief(args) {
   return { ...data, markdown };
 }
 
-function buildOneLiner(session, milestones, done, decisions) {
+function buildOneLiner(session, milestones, done, decisions, uncertainDecisions = []) {
   const total = milestones.length;
   const doneCount = done.length;
   const decisionCount = decisions.length;
+  const uncertainCount = uncertainDecisions.length;
   const decisionNote = decisionCount > 0 ? ` ${decisionCount} decision${decisionCount > 1 ? 's' : ''} need you.` : '';
+  const uncertainNote = uncertainCount > 0 ? ` ${uncertainCount} to double-check.` : '';
+  const tail = `${decisionNote}${uncertainNote}`;
 
   switch (session.state) {
     case 'complete':
       return doneCount === total
-        ? `Done. All ${total} milestones complete.${decisionNote}`
-        : `Marked complete. ${doneCount} of ${total} milestones done.${decisionNote}`;
+        ? `Done. All ${total} milestones complete.${tail}`
+        : `Marked complete. ${doneCount} of ${total} milestones done.${tail}`;
     case 'usage_limited':
-      return `Paused on quota. ${doneCount} of ${total} done. Auto-resume armed.${decisionNote}`;
+      return `Paused on quota. ${doneCount} of ${total} done. Auto-resume armed.${tail}`;
     case 'blocked':
-      return `Blocked. ${doneCount} of ${total} done. Needs your call.${decisionNote}`;
+      return `Blocked. ${doneCount} of ${total} done. Needs your call.${tail}`;
     case 'paused':
-      return `Paused. ${doneCount} of ${total} done.${decisionNote}`;
+      return `Paused. ${doneCount} of ${total} done.${tail}`;
     default:
-      return `Still running. ${doneCount} of ${total} done.${decisionNote}`;
+      return `Still running. ${doneCount} of ${total} done.${tail}`;
   }
 }
 
@@ -155,6 +179,18 @@ function buildFallbackBrief(d) {
     for (const dec of d.decisions_awaiting) {
       lines.push(`- **${dec.question}**${dec.blocking ? '  _(blocking)_' : ''}`);
       if (dec.recommendation) lines.push(`  - **Recommended:** ${dec.recommendation}`);
+      if (dec.reasoning) lines.push(`  - _Why:_ ${dec.reasoning}`);
+    }
+    lines.push('');
+  }
+
+  if (d.uncertain_decisions && d.uncertain_decisions.length > 0) {
+    lines.push(`## 🤔 Decisions you might want to review (${d.uncertain_decisions.length})`);
+    lines.push('The agent proceeded with these but flagged them as uncertain. Worth a quick sanity check.');
+    lines.push('');
+    for (const dec of d.uncertain_decisions) {
+      lines.push(`- **${dec.question}**`);
+      if (dec.recommendation) lines.push(`  - **Chose:** ${dec.recommendation}`);
       if (dec.reasoning) lines.push(`  - _Why:_ ${dec.reasoning}`);
     }
     lines.push('');
