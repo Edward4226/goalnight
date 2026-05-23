@@ -28,34 +28,56 @@ say "Adding goalnight marketplace ($GOALNIGHT_REPO@$GOALNIGHT_REF)..."
 codex plugin marketplace add "$GOALNIGHT_REPO" --ref "$GOALNIGHT_REF"
 ok "Marketplace added"
 
-# 3. Install npm deps inside the cached plugin (codex caches the marketplace tree
-#    under ~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/ on `marketplace add`).
-say "Installing goalnight plugin runtime deps..."
-PLUGIN_CACHE=$(find "$HOME/.codex/plugins/cache" -type f \
-  -path "*/goalnight/*/package.json" 2>/dev/null | head -1)
-if [ -z "$PLUGIN_CACHE" ]; then
-  err "Could not locate goalnight plugin under ~/.codex/plugins/cache."
-  err "Marketplace add did not stage the plugin — re-run install.sh in a minute."
+# 3. Stage the plugin from .tmp/marketplaces into plugins/cache and npm install.
+#    codex 0.130.0 `marketplace add` git-clones into ~/.codex/.tmp/marketplaces/<name>/
+#    but doesn't activate plugins — no `codex plugin add` subcommand exists in this
+#    release. We bridge that gap manually: copy the plugin source into the runtime
+#    cache layout codex expects, then write an explicit [plugins."<name>@<mkt>"]
+#    enable block to config.toml.
+say "Staging goalnight plugin into runtime cache..."
+PLUGIN_SOURCE="$HOME/.codex/.tmp/marketplaces/goalnight/plugins/goalnight"
+if [ ! -d "$PLUGIN_SOURCE" ]; then
+  err "Marketplace add succeeded but plugin source missing at $PLUGIN_SOURCE"
+  err "Re-run install.sh; if it persists, file an issue."
   exit 1
 fi
-PLUGIN_ROOT=$(dirname "$PLUGIN_CACHE")
-(cd "$PLUGIN_ROOT" && npm install --no-audit --no-fund --silent)
-ok "Plugin deps installed in $PLUGIN_ROOT"
+if ! command -v node >/dev/null 2>&1; then
+  err "node not found in PATH. Install Node.js >= 18 and re-run."
+  exit 1
+fi
+PLUGIN_VERSION=$(node -p "require('$PLUGIN_SOURCE/.codex-plugin/plugin.json').version")
+PLUGIN_ROOT="$HOME/.codex/plugins/cache/goalnight/goalnight/$PLUGIN_VERSION"
+mkdir -p "$PLUGIN_ROOT"
+# Idempotent: cp overwrites; if a stale older version dir lingers, leave it for now
+# (codex picks the registered version via [plugins.X@Y] block, not by scanning).
+cp -R "$PLUGIN_SOURCE/." "$PLUGIN_ROOT/"
+ok "Plugin staged at $PLUGIN_ROOT"
 
-# 4. Enable plugin_hooks
+say "Installing goalnight plugin runtime deps (npm install)..."
+(cd "$PLUGIN_ROOT" && npm install --no-audit --no-fund --silent)
+ok "Plugin deps installed"
+
+# 4. Enable plugin_hooks + register [plugins."goalnight@goalnight"] enabled = true.
 CONFIG="$HOME/.codex/config.toml"
-say "Enabling plugin_hooks in $CONFIG..."
+say "Updating $CONFIG..."
 [ -f "$CONFIG" ] || touch "$CONFIG"
+cp "$CONFIG" "$CONFIG.bak.$(date +%s)" 2>/dev/null || true
 if grep -q "^plugin_hooks[[:space:]]*=[[:space:]]*true" "$CONFIG" 2>/dev/null; then
   ok "plugin_hooks already enabled"
 else
-  cp "$CONFIG" "$CONFIG.bak.$(date +%s)" 2>/dev/null || true
   if ! grep -q "^\[features\]" "$CONFIG"; then
     printf '\n[features]\n' >> "$CONFIG"
   fi
   printf 'plugin_hooks = true\n' >> "$CONFIG"
-  ok "plugin_hooks enabled (backup at $CONFIG.bak.*)"
+  ok "plugin_hooks = true added"
 fi
+if grep -q '^\[plugins."goalnight@goalnight"\]' "$CONFIG" 2>/dev/null; then
+  ok "[plugins.\"goalnight@goalnight\"] already registered"
+else
+  printf '\n[plugins."goalnight@goalnight"]\nenabled = true\n' >> "$CONFIG"
+  ok "[plugins.\"goalnight@goalnight\"] enabled = true added"
+fi
+ok "Config backup at $CONFIG.bak.*"
 
 cat <<'EOF'
 
