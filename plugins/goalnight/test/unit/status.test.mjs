@@ -44,6 +44,20 @@ test('status pending_decisions_count tracks unresolved decisions', async () => {
   assert.equal((await status({})).pending_decisions_count, 1);
 });
 
+test('status picks the most-recently-INSERTed session when updated_at is tied (rowid tiebreaker — regression for Task #33)', async () => {
+  // Same-ms tie: two sessions share updated_at. The query ORDER BY updated_at DESC,
+  // rowid DESC must return the second-INSERTed session.
+  const a = await planNight({ objective: 'first', milestones: ['x'] });
+  const b = await planNight({ objective: 'second', milestones: ['y'] });
+  const ts = Date.now();
+  const db = getDb();
+  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(ts, a.session_id);
+  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(ts, b.session_id);
+  const r = await status({});
+  assert.equal(r.session_id, b.session_id);
+  assert.equal(r.objective, 'second');
+});
+
 test('status findings_count + elapsed/burn-rate fields present', async () => {
   await planNight({ objective: 'f', milestones: ['m'] });
   for (const t of ['insight', 'note', 'warning']) {

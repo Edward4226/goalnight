@@ -40,7 +40,7 @@ export async function morningBrief(args) {
   const db = getDb();
   const session = args.session_id
     ? db.prepare('SELECT * FROM sessions WHERE id = ?').get(args.session_id)
-    : db.prepare('SELECT * FROM sessions ORDER BY updated_at DESC LIMIT 1').get();
+    : db.prepare('SELECT * FROM sessions ORDER BY updated_at DESC, rowid DESC LIMIT 1').get();
 
   if (!session) throw new Error('No goalnight session found.');
 

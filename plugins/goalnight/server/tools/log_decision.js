@@ -62,7 +62,7 @@ export async function logDecision(args) {
 
   const db = getDb();
   const session = db
-    .prepare('SELECT id FROM sessions ORDER BY updated_at DESC LIMIT 1')
+    .prepare('SELECT id FROM sessions ORDER BY updated_at DESC, rowid DESC LIMIT 1')
     .get();
   if (!session) {
     throw new Error('No active session. Call gn_plan_night first.');

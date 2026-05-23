@@ -85,7 +85,6 @@ test('log_decision options/recommendation/reasoning are all optional', async () 
 
 test('log_decision attaches to the most recent session', async () => {
   await planNight({ objective: 'first', milestones: ['x'] });
-  await new Promise(r => setTimeout(r, 5));
   const second = await planNight({ objective: 'second', milestones: ['y'] });
   const r = await logDecision({ question: 'belongs where?' });
   assert.equal(r.session_id, second.session_id);

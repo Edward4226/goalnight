@@ -89,7 +89,6 @@ test('morning_brief throws when no session exists', async () => {
 
 test('morning_brief by session_id returns that specific session', async () => {
   const a = await planNight({ objective: 'session A', milestones: ['m'] });
-  await new Promise(r => setTimeout(r, 5));
   const b = await planNight({ objective: 'session B', milestones: ['n'] });
   assert.equal((await morningBrief({ session_id: a.session_id })).objective, 'session A');
   assert.equal((await morningBrief({ session_id: b.session_id })).objective, 'session B');

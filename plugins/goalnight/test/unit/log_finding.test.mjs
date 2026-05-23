@@ -62,7 +62,6 @@ test('log_finding throws when type or content missing, or no session exists', as
 
 test('log_finding attaches to the most recent session', async () => {
   await planNight({ objective: 'first', milestones: ['x'] });
-  await new Promise(r => setTimeout(r, 5));
   const second = await planNight({ objective: 'second', milestones: ['y'] });
   const r = await logFinding({ type: 'note', content: 'belongs to second' });
   assert.equal(r.session_id, second.session_id);

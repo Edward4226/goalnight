@@ -28,7 +28,7 @@ async function main() {
     const db = getDb();
     const session = db
       .prepare(
-        `SELECT id FROM sessions WHERE state = 'active' ORDER BY updated_at DESC LIMIT 1`
+        `SELECT id FROM sessions WHERE state = 'active' ORDER BY updated_at DESC, rowid DESC LIMIT 1`
       )
       .get();
     if (!session) process.exit(0);

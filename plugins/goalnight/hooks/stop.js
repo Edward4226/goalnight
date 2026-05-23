@@ -29,7 +29,7 @@ async function main() {
         `SELECT id, state, tokens_used
          FROM sessions
          WHERE state IN ('active', 'paused', 'usage_limited', 'blocked')
-         ORDER BY updated_at DESC LIMIT 1`
+         ORDER BY updated_at DESC, rowid DESC LIMIT 1`
       )
       .get();
     if (!session) process.exit(0);
