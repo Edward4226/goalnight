@@ -1,0 +1,27 @@
+{
+  "name": "goalnight",
+  "version": "0.1.0-pre",
+  "description": "Set a goal, go to bed, wake up to a PR. An overnight goal-execution layer for Codex /goal mode.",
+  "author": {
+    "name": "Edward",
+    "url": "https://github.com/Edward4226"
+  },
+  "repository": "https://github.com/Edward4226/goalnight",
+  "license": "AGPL-3.0-or-later",
+  "keywords": ["codex", "goal", "overnight", "productivity", "ai-agents"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "goalnight",
+    "shortDescription": "Overnight goal-execution layer for Codex.",
+    "longDescription": "goalnight extends Codex's /goal mode to run reliably overnight. It auto-resumes when your token quota refreshes (so you don't waste the quota that refreshes while you sleep), surfaces decisions that need your call, and shows a cozy morning brief when you wake up.",
+    "developerName": "Edward",
+    "category": "Productivity",
+    "defaultPrompt": [
+      "@goalnight plan 8h to <your goal>",
+      "@goalnight brief"
+    ],
+    "brandColor": "#FFEB95"
+  }
+}

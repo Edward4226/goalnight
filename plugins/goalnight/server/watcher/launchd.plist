@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.goalnight.watcher</string>
+
+  <!-- install.sh substitutes the leading path with $(command -v node) and
+       replaces ${PLUGIN_ROOT} / ${HOME} with absolute paths. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>${PLUGIN_ROOT}/server/watcher/daemon.js</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Throttle restart so a crash loop doesn't pin a CPU core. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>${HOME}/.goalnight/watcher.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>${HOME}/.goalnight/watcher.err</string>
+
+  <!-- v0.1 ships dry-run by default. Flip GOALNIGHT_WATCHER_RESUME to "1"
+       to let the daemon actually spawn `codex exec resume ...`. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>GOALNIGHT_WATCHER_RESUME</key>
+    <string>0</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>

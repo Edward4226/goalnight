@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>goalnight</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%8C%99%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="page">
+
+    <!-- ▒▒ 1. Top bar ▒▒ -->
+    <header class="top-bar" aria-label="Status">
+      <div class="brand">
+        <svg class="mascot" viewBox="0 0 32 32" aria-hidden="true">
+          <!-- minimalist owl silhouette with moon-yellow eyes -->
+          <circle cx="16" cy="17" r="11" fill="#1d3b53" stroke="#2c4a6a" stroke-width="1" />
+          <circle cx="11.5" cy="15" r="3" fill="#0b2942" />
+          <circle cx="20.5" cy="15" r="3" fill="#0b2942" />
+          <circle cx="11.5" cy="15" r="1.5" fill="#FFEB95" />
+          <circle cx="20.5" cy="15" r="1.5" fill="#FFEB95" />
+          <path d="M14 21 q2 1.4 4 0" stroke="#FFEB95" stroke-width="1.2" fill="none" stroke-linecap="round" />
+          <path d="M6 9 l4 4 M26 9 l-4 4" stroke="#1d3b53" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        <div class="brand-text">
+          <div class="brand-title">goalnight</div>
+          <div class="brand-sub" id="brand-sub">idle</div>
+        </div>
+      </div>
+      <div class="hero-objective" id="hero-objective" aria-live="polite">
+        set a goal, go to bed, wake up to a PR.
+      </div>
+      <div class="hero-status">
+        <span class="status-pill" id="status-pill" data-state="none">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="status-label" id="status-label">No session</span>
+        </span>
+        <span class="quota-chip" id="quota-chip" title="5h quota usage">— / —</span>
+      </div>
+    </header>
+
+    <!-- ▒▒ 2. Goal card ▒▒ -->
+    <section class="card" id="goal-card" aria-labelledby="goal-heading">
+      <div class="card-head">
+        <div class="card-label" id="goal-heading">Objective</div>
+        <div class="card-meta mono" id="goal-started">—</div>
+      </div>
+      <div class="goal-text" id="goal-text">No active goalnight session.</div>
+      <div class="goal-session mono" id="goal-session-id"></div>
+    </section>
+
+    <!-- ▒▒ 3. Stats row ▒▒ -->
+    <section class="stats-row" aria-label="Run statistics">
+      <article class="card stat-card">
+        <div class="card-label">Elapsed</div>
+        <div class="stat-number mono" id="stat-elapsed">—</div>
+        <div class="stat-sub" id="stat-elapsed-sub">since start</div>
+      </article>
+
+      <article class="card stat-card">
+        <div class="card-label">Tokens used</div>
+        <div class="stat-number mono" id="stat-tokens">—</div>
+        <div class="stat-sub" id="stat-tokens-sub">of budget</div>
+      </article>
+
+      <article class="card stat-card stat-burn">
+        <div class="card-label">Burn rate</div>
+        <div class="stat-number-row">
+          <span class="stat-number mono accent" id="stat-burn">—</span>
+          <span class="stat-unit">tok/min</span>
+        </div>
+        <div class="sparkline-wrap">
+          <svg class="sparkline" id="sparkline" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true">
+            <polyline id="sparkline-path" fill="none" stroke="#FFEB95" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+            <circle id="sparkline-head" r="2" fill="#FFEB95" />
+          </svg>
+        </div>
+        <div class="stat-sub" id="stat-eta">ETA —</div>
+      </article>
+    </section>
+
+    <!-- ▒▒ 4. Milestones ▒▒ -->
+    <section class="card" aria-labelledby="ms-heading">
+      <div class="card-head">
+        <h2 class="card-title" id="ms-heading">Milestones</h2>
+        <div class="card-meta" id="ms-progress">0 of 0 done</div>
+      </div>
+      <ul class="milestone-list" id="milestone-list">
+        <li class="empty-row">No milestones yet — run <code>gn plan-night</code> to seed one.</li>
+      </ul>
+    </section>
+
+    <!-- ▒▒ 5. Decisions waiting (high priority) ▒▒ -->
+    <section class="card decisions-card" id="decisions-card" aria-labelledby="dec-heading" data-empty="true">
+      <div class="card-head">
+        <h2 class="card-title accent-orange" id="dec-heading">
+          <span class="warn-icon" aria-hidden="true">⚠</span>
+          Decisions waiting
+          <span class="pulse-dot" aria-hidden="true"></span>
+        </h2>
+        <div class="card-meta accent-orange" id="dec-count">0 pending</div>
+      </div>
+      <div class="decisions-body" id="decisions-body">
+        <div class="empty-row">Nothing waiting on you right now.</div>
+      </div>
+    </section>
+
+    <!-- ▒▒ 6. Findings stream ▒▒ -->
+    <section class="card findings-card" aria-labelledby="find-heading">
+      <div class="card-head">
+        <h2 class="card-title" id="find-heading">Findings</h2>
+        <div class="card-meta">
+          <span class="live-chip"><span class="live-dot"></span>live</span>
+        </div>
+      </div>
+      <ol class="findings-list" id="findings-list">
+        <li class="empty-row">No findings logged yet.</li>
+      </ol>
+    </section>
+
+    <!-- ▒▒ 7. Quota timeline ▒▒ -->
+    <section class="card" aria-labelledby="quota-heading">
+      <div class="card-head">
+        <h2 class="card-title" id="quota-heading">Quota</h2>
+        <div class="card-meta mono" id="quota-reset">next reset —</div>
+      </div>
+      <div class="quota-rows">
+        <div class="quota-row">
+          <div class="quota-label">5h window</div>
+          <div class="quota-bar" data-tone="moon">
+            <div class="quota-fill" id="quota-5h-fill"></div>
+          </div>
+          <div class="quota-pct mono" id="quota-5h-pct">—</div>
+        </div>
+        <!-- v0.1: Weekly Sonnet/Opus rows hidden (data source pending) — kept in DOM for JS handles. -->
+        <div class="quota-row" hidden>
+          <div class="quota-label">Weekly Sonnet</div>
+          <div class="quota-bar" data-tone="orange">
+            <div class="quota-fill" id="quota-sonnet-fill"></div>
+          </div>
+          <div class="quota-pct mono" id="quota-sonnet-pct">—</div>
+        </div>
+        <div class="quota-row" hidden>
+          <div class="quota-label">Weekly Opus</div>
+          <div class="quota-bar" data-tone="pink">
+            <div class="quota-fill" id="quota-opus-fill"></div>
+          </div>
+          <div class="quota-pct mono" id="quota-opus-pct">—</div>
+        </div>
+      </div>
+      <div class="quota-footnote" id="quota-foot">5h resets —</div>
+    </section>
+
+    <footer class="page-foot">
+      <span>🌙 goalnight v0.1</span>
+      <span class="dot-sep">·</span>
+      <span id="conn-state">connecting…</span>
+    </footer>
+  </main>
+
+  <script src="/dashboard.js" defer></script>
+</body>
+</html>

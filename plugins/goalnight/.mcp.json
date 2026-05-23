@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "goalnight": {
+      "command": "node",
+      "args": ["./server/index.js"],
+      "cwd": ".",
+      "env": {
+        "GOALNIGHT_DATA": "${PLUGIN_DATA}"
+      }
+    }
+  }
+}

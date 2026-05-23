@@ -1,0 +1,38 @@
+{
+  "name": "goalnight",
+  "version": "0.1.0-pre",
+  "description": "Overnight goal-execution layer for Codex /goal mode. Set a goal, go to bed, wake up to a PR.",
+  "type": "module",
+  "main": "server/index.js",
+  "bin": {
+    "gn": "./bin/gn.js",
+    "goalnight": "./bin/gn.js"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dashboard": "node server/dashboard/server.js",
+    "watcher": "node server/watcher/daemon.js",
+    "init-db": "node server/db/init.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "AGPL-3.0-or-later",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Edward4226/goalnight.git"
+  },
+  "keywords": [
+    "codex",
+    "openai",
+    "goal",
+    "overnight",
+    "productivity",
+    "ai-agents"
+  ]
+}

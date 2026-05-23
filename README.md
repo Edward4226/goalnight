@@ -2,7 +2,7 @@
 
 > **set a goal, go to bed, wake up to a PR.**
 
-*(dashboard screenshot — coming with v0.1)*
+*(dashboard screenshot — coming with v0.1 release)*
 
 Codex `/goal` is great. But when it hits your 5h token quota, it just stops.
 You sleep 8h. Your tokens refresh at hour 5. They sit there. They expire.
@@ -35,32 +35,42 @@ That's the gap goalnight fills.
 
 ## Install
 
-```bash
-codex plugin marketplace add Edward4226/goalnight
-codex plugin add goalnight@goalnight
-```
-
-Or, one-liner:
+One-liner (recommended):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Edward4226/goalnight/main/install.sh | sh
 ```
 
-The one-liner also enables `plugin_hooks` in `~/.codex/config.toml` and installs the macOS launchd watcher.
+What it does:
+
+1. `codex plugin marketplace add Edward4226/goalnight`
+2. `npm install` inside the cached plugin directory
+3. Enables `plugin_hooks = true` in `~/.codex/config.toml`
+4. On macOS, installs the launchd auto-resume watcher (dry-run by default)
+
+Requirements: Codex CLI (`npm install -g @openai/codex`), Node ≥ 18, macOS for v0.1.
+
+> **Heads-up — auto-resume is dry-run by default.** After install, the watcher
+> only logs what it *would* do. To enable real `codex exec resume` calls when
+> your quota refreshes overnight, edit
+> `~/Library/LaunchAgents/dev.goalnight.watcher.plist`, change
+> `GOALNIGHT_WATCHER_RESUME` from `"0"` to `"1"`, then
+> `launchctl unload <plist> && launchctl load <plist>`. The install script
+> prints these exact commands at the end.
 
 ---
 
 ## Use
 
-Before bed:
+Before bed, inside a Codex session:
 
-```bash
+```text
 @goalnight plan 8h to implement user-profile feature with tests
 ```
 
 In the morning:
 
-```bash
+```text
 @goalnight brief
 ```
 
@@ -72,7 +82,7 @@ Peek any time at `http://localhost:8888`.
 
 **🌙 Sleep Budget Algorithm.** Converts your sleep window into a token budget and a milestone count — so the model knows when to push and when to wrap up.
 
-**🔄 Cross-Period Auto-Resume.** A small launchd watcher polls Codex's usage state. The instant your 5h quota refreshes, it calls `codex resume` and re-injects context. No 3am intervention.
+**🔄 Cross-Period Auto-Resume.** A small launchd watcher polls Codex's usage state (sqlite + rollout JSONL). The instant your 5h quota refreshes, it calls `codex exec resume <session-id>` and re-injects context. No 3am intervention.
 
 **📢 Pause / Approval Notifications.** macOS desktop notifications fire only on the things that actually need you — blocking decisions, quota hits, approval waits, goal complete. Throttled so a chatty session doesn't spam you.
 
@@ -92,9 +102,9 @@ Peek any time at `http://localhost:8888`.
 
 ## Status
 
-**v0.1**: pre-alpha. macOS only. Read-only dashboard.
+**v0.1**: pre-alpha. macOS only. Read-only dashboard. The auto-resume watcher ships in dry-run mode by default — flip the env var when you're ready to trust it overnight.
 
-See the roadmap in [docs/ROADMAP.md](docs/ROADMAP.md) for v0.2 (cross-platform notifications, Linux/Windows watchers, dashboard interactions).
+Roadmap is coming after v0.1: cross-platform notifications, Linux/Windows watchers, dashboard interactions, optional checkpoint/rollback for milestones.
 
 ---
 
@@ -106,7 +116,7 @@ Bug reports welcome. Feature requests — please skim [docs/positioning.md](docs
 
 ## License
 
-License: TBD — pending v0.1 final release.
+[AGPL-3.0](LICENSE). If you're building a hosted service on top of goalnight, the AGPL applies — happy to talk about a commercial license if that's a blocker for you.
 
 ---
 
