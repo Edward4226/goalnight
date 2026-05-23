@@ -92,6 +92,18 @@ Peek any time at `http://localhost:8888`.
 
 ---
 
+## Limitations (v0.1)
+
+A few things to know before you trust it overnight:
+
+- **Hooks fire in interactive `codex` sessions only.** `codex exec` (the non-interactive mode) does not currently invoke plugin hooks in codex 0.130.0 (`plugin_hooks` is still tagged "under development" in `codex features list`). That means goalnight's notifications and live state tracking only work when you're inside a real `codex` session — not when you script it via `codex exec`.
+- **Auto-resume is dry-run by default.** The watcher logs what it *would* do, but doesn't actually call `codex exec resume` until you flip `GOALNIGHT_WATCHER_RESUME` to `"1"` in the launchd plist. We default-off on purpose — we'd rather you opt in than wake up to surprise token spend.
+- **Single-session model.** v0.1 assumes one goalnight session at a time. If you start a second one while the first is active, the dashboard and morning brief will show the most recent.
+- **State detection is best-effort.** The stop hook reads `payload.goal_state` from codex's hook payload. The exact field name in codex 0.130.0 hasn't been confirmed against a live session — if you see decisions/findings landing but no transition notifications firing, please file an issue with a stop-hook stdin dump.
+- **macOS only.** Linux + Windows are v0.2. The watcher uses `launchd`; cross-platform support needs systemd / scheduled-task equivalents.
+
+---
+
 ## Requirements
 
 - Codex CLI installed (`npm install -g @openai/codex`)
