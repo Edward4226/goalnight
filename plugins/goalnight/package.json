@@ -1,6 +1,6 @@
 {
   "name": "goalnight",
-  "version": "0.1.0-pre",
+  "version": "0.1.1",
   "description": "Overnight goal-execution layer for Codex /goal mode. Set a goal, go to bed, wake up to a PR.",
   "type": "module",
   "main": "server/index.js",
