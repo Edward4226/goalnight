@@ -13,11 +13,20 @@
  */
 
 import { spawn } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 
 const THROTTLE_MS = 10 * 60_000;
 const _lastSent = new Map();
 
 export function notify({ title, body, sound = false, type = 'default' }) {
+  // Test escape hatch — when set, log call to file and skip osascript.
+  if (process.env.GOALNIGHT_NOTIFY_LOG) {
+    try {
+      appendFileSync(process.env.GOALNIGHT_NOTIFY_LOG, JSON.stringify({ title, body, sound, type, at: Date.now() }) + '\n');
+    } catch {}
+    return;
+  }
+
   const now = Date.now();
   const last = _lastSent.get(type);
   if (last && now - last < THROTTLE_MS) return;

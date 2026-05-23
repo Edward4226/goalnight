@@ -12,7 +12,8 @@
     "start": "node server/index.js",
     "dashboard": "node server/dashboard/server.js",
     "watcher": "node server/watcher/daemon.js",
-    "init-db": "node server/db/init.js"
+    "init-db": "node server/db/init.js",
+    "test": "node --test 'test/**/*.test.mjs'"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
