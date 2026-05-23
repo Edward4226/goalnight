@@ -62,14 +62,20 @@ CONFIG="$HOME/.codex/config.toml"
 say "Updating $CONFIG..."
 [ -f "$CONFIG" ] || touch "$CONFIG"
 cp "$CONFIG" "$CONFIG.bak.$(date +%s)" 2>/dev/null || true
-if grep -q "^plugin_hooks[[:space:]]*=[[:space:]]*true" "$CONFIG" 2>/dev/null; then
+if grep -qE "^(features\.)?plugin_hooks[[:space:]]*=[[:space:]]*true" "$CONFIG" 2>/dev/null; then
   ok "plugin_hooks already enabled"
+elif grep -q "^\[features\]" "$CONFIG" 2>/dev/null; then
+  # [features] exists somewhere — insert plugin_hooks RIGHT AFTER it so it lands
+  # inside the table. A naive `printf >> file` lands at file-end and would attach
+  # to whatever table happens to be open there (we saw this land under
+  # [plugins."goalnight@goalnight"] in practice).
+  awk 'BEGIN{done=0} /^\[features\]/ && !done {print; print "plugin_hooks = true"; done=1; next} {print}' "$CONFIG" > "$CONFIG.tmp" \
+    && mv "$CONFIG.tmp" "$CONFIG"
+  ok "plugin_hooks = true inserted under [features]"
 else
-  if ! grep -q "^\[features\]" "$CONFIG"; then
-    printf '\n[features]\n' >> "$CONFIG"
-  fi
-  printf 'plugin_hooks = true\n' >> "$CONFIG"
-  ok "plugin_hooks = true added"
+  # No [features] table — safe to append a fresh block at file end.
+  printf '\n[features]\nplugin_hooks = true\n' >> "$CONFIG"
+  ok "[features] block + plugin_hooks = true appended"
 fi
 if grep -q '^\[plugins."goalnight@goalnight"\]' "$CONFIG" 2>/dev/null; then
   ok "[plugins.\"goalnight@goalnight\"] already registered"
