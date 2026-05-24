@@ -134,7 +134,10 @@ test('tools/call gn_plan_night persists a session + 3 milestones', async () => {
   assert.equal(payload.objective, 'integration test objective');
   assert.equal(payload.milestones.length, 3);
   assert.deepEqual(payload.milestones.map(m => m.ordinal), [1, 2, 3]);
-  assert.match(payload.codex_goal_command, /^\/goal set integration test objective/);
+  // Task #34: field renamed to *_informational + next_action explicitly tells the
+  // model NOT to invoke codex /goal (which is buggy on codex 0.130.0).
+  assert.match(payload.codex_goal_command_informational, /^\/goal set integration test objective/);
+  assert.match(payload.next_action, /Do NOT invoke the codex \/goal/);
 });
 
 test('tools/call on an unknown tool name returns isError', async () => {

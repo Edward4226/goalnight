@@ -2,15 +2,52 @@
 /**
  * Stop hook — fires at end of each conversation turn.
  *
- * v0.1 behavior:
- *   - Append a turn_log row capturing the turn's tool calls + token delta.
- *   - Update session updated_at timestamp.
- *   - State transition detection (active → usage_limited / blocked) is best-effort;
- *     full detection lands in v0.1 final via state_parser.js reading codex's state DB.
+ * v0.1.2 behavior:
+ *   - Read codex's hook payload (best-effort: codex 0.130.0 documents some
+ *     payload fields but the exact key for the goal-state isn't confirmed;
+ *     we try several candidates and fall back gracefully).
+ *   - Determine the new state BEFORE inserting turn_log so before/after
+ *     reflect the actual transition (Task #14 fix — earlier the row always
+ *     wrote `after = before` and a later UPDATE silently changed it for
+ *     the NEXT turn only).
+ *   - Fire a notification if the state transitioned to usage_limited /
+ *     blocked / complete.
+ *   - Update sessions.state + updated_at.
+ *
+ * Hooks must never block codex. Any error → exit 0 with stderr log.
  */
 
 import { getDb } from '../server/db/client.js';
 import { notify } from '../server/notifications/index.js';
+
+/**
+ * Best-effort extraction of the new goal state from codex's hook payload.
+ * Field name is unconfirmed in codex 0.130.0 (Task #12). Try candidates in
+ * priority order: most-likely first. Returns null if none match.
+ *
+ * Exported for unit testing — the hook script itself runs main() only when
+ * invoked directly (via the import.meta.url guard at the bottom).
+ */
+export function extractNewState(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const candidates = [
+    payload.goal_state,
+    payload.goalState,
+    payload.session_state,
+    payload.sessionState,
+    payload.thread_state,
+    payload.threadState,
+    payload.state,
+    // codex's ThreadStatus may live nested under a parent key
+    payload.thread?.status,
+    payload.session?.state,
+    payload.goal?.state,
+  ];
+  for (const v of candidates) {
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  return null;
+}
 
 async function main() {
   let raw = '';
@@ -19,7 +56,7 @@ async function main() {
   try {
     payload = JSON.parse(raw);
   } catch {
-    /* ignore */
+    /* ignore — codex may send non-JSON or empty stdin in some cases */
   }
 
   try {
@@ -37,6 +74,11 @@ async function main() {
     const ts = Date.now();
     const toolsCalled = payload?.tools_called ?? payload?.tool_calls ?? [];
 
+    // Detect transition FIRST so turn_log captures the real before/after pair.
+    const candidate = extractNewState(payload);
+    const newState = (candidate && candidate !== session.state) ? candidate : session.state;
+    const transitioned = newState !== session.state;
+
     db.prepare(
       `INSERT INTO turn_log
          (session_id, turn_number, tokens_delta, tools_called,
@@ -47,13 +89,12 @@ async function main() {
       payload?.turn_number ?? null,
       payload?.token_usage?.delta ?? 0,
       JSON.stringify(toolsCalled),
-      session.state,
-      session.state, // v0.1 doesn't detect transitions yet
+      session.state,  // before
+      newState,       // after — now reflects the transition in the same row
       ts
     );
 
-    const newState = payload?.goal_state ?? session.state;
-    if (newState !== session.state) {
+    if (transitioned) {
       if (newState === 'usage_limited') {
         notify({
           type: 'usage-limited',
@@ -86,4 +127,9 @@ async function main() {
   process.exit(0);
 }
 
-main();
+// Only run main() when invoked directly as a hook script — not on import
+// from tests. import.meta.url is a `file://...` URL; process.argv[1] is the
+// absolute filesystem path of the entry script.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

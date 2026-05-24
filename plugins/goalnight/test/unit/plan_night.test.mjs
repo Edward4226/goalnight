@@ -19,7 +19,10 @@ test('plan_night returns full shape + persists session/milestones to SQLite', as
   assert.equal(result.milestones.length, 3);
   assert.equal(result.milestones[0].ordinal, 1);
   assert.equal(result.milestones[2].ordinal, 3);
-  assert.ok(result.codex_goal_command.includes('test goal'));
+  // codex_goal_command_informational is renamed (Task #34) to discourage the
+  // model from calling codex /goal — which has known interop bugs on 0.130.0.
+  assert.ok(result.codex_goal_command_informational.includes('test goal'));
+  assert.match(result.next_action, /Do NOT invoke the codex \/goal/);
 
   const db = getDb();
   const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(result.session_id);

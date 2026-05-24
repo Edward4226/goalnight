@@ -128,10 +128,17 @@ export async function planNight(args) {
       estimated_tokens: tokensPerMilestone,
     })),
     quota_periods_covered: +(hours / 5).toFixed(2),
-    codex_goal_command: `/goal set ${objective} --budget ${tokenBudget}`,
+    // Informational only. goalnight tracks progress independently of codex's
+    // native /goal mode; some codex versions (0.130.0 included) have bugs in
+    // create_goal/get_goal. Do NOT call this — see next_action.
+    codex_goal_command_informational: `/goal set ${objective} --budget ${tokenBudget}`,
     dashboard_url: `http://localhost:${process.env.GOALNIGHT_PORT || 8888}`,
     next_action:
-      'Execute the codex_goal_command above to hand the objective to codex /goal. ' +
-      'You can then close your laptop. Open the dashboard URL anytime to peek progress.',
+      'Session persisted. Start working on the objective directly — every tool call ' +
+      'rolls into goalnight tracking. Log meaningful observations with gn_log_finding ' +
+      'and judgment calls with gn_log_decision; both surface in the morning brief. ' +
+      'Do NOT invoke the codex /goal native mode (it has known interop bugs on ' +
+      'codex 0.130.0 — `create_goal` fails with no such table: thread_goals). ' +
+      'goalnight is your single source of truth for this session.',
   };
 }
