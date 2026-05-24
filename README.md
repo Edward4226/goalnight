@@ -2,7 +2,7 @@
 
 > **set a goal, go to bed, wake up to a PR.**
 
-*(dashboard screenshot — coming with v0.1 release)*
+![goalnight dashboard](docs/screenshots/dashboard.png)
 
 Codex `/goal` is great. But when it hits your 5h token quota, it just stops.
 You sleep 8h. Your tokens refresh at hour 5. They sit there. They expire.
@@ -88,7 +88,15 @@ Peek any time at `http://localhost:8888`.
 
 **☀️ Morning Brief.** `@goalnight brief` (or `gn brief`) renders a one-page summary: what shipped, token spend, decisions waiting, suggested next steps. Designed to read in 30 seconds.
 
+![morning brief](docs/screenshots/morning-brief.png)
+
 **🤝 Decisions Awaiting.** When the model would normally ask "should I do A or B?", it instead records the question, its recommendation, and its reasoning — then proceeds. You review in the morning brief, override if you disagree.
+
+![decisions card — blocking + uncertain](docs/screenshots/close-decisions.png)
+
+**📊 Quota timeline.** The dashboard shows you exactly where you are in the 5h window, how many windows you've already relit, and when the next refresh hits.
+
+![quota timeline](docs/screenshots/close-quota.png)
 
 ---
 

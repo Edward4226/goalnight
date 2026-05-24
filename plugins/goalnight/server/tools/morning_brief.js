@@ -18,6 +18,27 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = join(__dirname, '..', '..', 'templates', 'morning_brief.md');
+const RECEIPT_RATES_PATH = join(__dirname, '..', 'dashboard', 'templates', 'receipt-rates.json');
+
+// Codex's underlying quota refresh cycle. If this ever changes upstream,
+// flip this constant — the receipt math is the only place it matters.
+const QUOTA_WINDOW_SEC = 5 * 3600;
+
+let _ratesCache = null;
+function loadReceiptRates() {
+  if (_ratesCache) return _ratesCache;
+  try {
+    _ratesCache = JSON.parse(readFileSync(RECEIPT_RATES_PATH, 'utf8'));
+  } catch {
+    // Fall back to a minimal embedded table so the receipt still renders if
+    // the JSON ever goes missing. Same Pro rate as the file.
+    _ratesCache = {
+      default_plan: 'pro',
+      plans: { pro: { name: 'Codex Pro', usd_per_million_tokens: 150 } },
+    };
+  }
+  return _ratesCache;
+}
 
 export const morningBriefSchema = {
   description: `Generate the morning brief — the structured summary the user reads when they wake up.
@@ -99,6 +120,23 @@ export async function morningBrief(args) {
 
   const summary = buildOneLiner(session, milestones, milestonesDone, decisions, uncertainDecisions);
 
+  const allDecisions = db
+    .prepare('SELECT blocking FROM decisions WHERE session_id = ?')
+    .all(session.id);
+  const allFindings = db
+    .prepare('SELECT type FROM findings WHERE session_id = ?')
+    .all(session.id);
+
+  const receiptData = buildReceiptData({
+    session,
+    durationSec,
+    durationHuman,
+    milestonesDone,
+    milestones,
+    allDecisions,
+    allFindings,
+  });
+
   const data = {
     summary_one_liner: summary,
     status: session.state,
@@ -111,6 +149,7 @@ export async function morningBrief(args) {
     decisions_awaiting: decisions,
     uncertain_decisions: uncertainDecisions,
     findings_highlights: findings,
+    receipt_data: receiptData,
   };
 
   let markdown;
@@ -161,6 +200,76 @@ function formatScalar(v) {
   if (v == null) return '';
   if (Array.isArray(v)) return v.length.toString();
   return String(v);
+}
+
+function buildReceiptData({ session, durationSec, durationHuman, milestonesDone, milestones, allDecisions, allFindings }) {
+  const db = getDb();
+
+  // quota_windows_relit: count of state transitions from usage_limited → active
+  // (the moment goalnight successfully relit the run after a quota hit).
+  // If turn_log lacks those rows yet, fall back to 0 — never invent reclaim.
+  let quotaWindowsRelit = 0;
+  try {
+    quotaWindowsRelit = db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM turn_log
+         WHERE session_id = ?
+           AND goal_state_before = 'usage_limited'
+           AND goal_state_after  = 'active'`
+      )
+      .get(session.id).c;
+  } catch {
+    quotaWindowsRelit = 0;
+  }
+
+  // Burn rate: same shape as gn_status — tokens per minute, rounded.
+  const burnRateTokensPerMin = durationSec > 0
+    ? Math.round((session.tokens_used / durationSec) * 60)
+    : 0;
+
+  // tokens_reclaimed = tokens that *would* have been wasted during quota
+  // refresh windows that goalnight bridged through. Capped at elapsed time
+  // so we never claim more reclaim than the session actually ran.
+  let tokensReclaimed = 0;
+  if (quotaWindowsRelit > 0) {
+    const timeInRelitWindowsSec = quotaWindowsRelit * QUOTA_WINDOW_SEC;
+    const capped = Math.min(timeInRelitWindowsSec, durationSec);
+    tokensReclaimed = Math.round((capped / 60) * burnRateTokensPerMin);
+  }
+
+  const rates = loadReceiptRates();
+  const planKey = process.env.GOALNIGHT_PLAN || rates.default_plan;
+  const planEntry = rates.plans[planKey] || rates.plans[rates.default_plan];
+  const usdPerMtok = planEntry?.usd_per_million_tokens ?? 0;
+
+  const headlineTokens = tokensReclaimed > 0 ? tokensReclaimed : (session.tokens_used || 0);
+  const costEstimateUsd = +((headlineTokens / 1_000_000) * usdPerMtok).toFixed(2);
+
+  // Decision/finding line composition.
+  const decisionsTotal = allDecisions.length;
+  const blockingCount = allDecisions.filter(d => d.blocking === 1).length;
+  const findingsTotal = allFindings.length;
+  const bugFixedCount = allFindings.filter(f => f.type === 'bug').length;
+
+  return {
+    session_id: session.id,
+    headline: {
+      tokens_reclaimed: tokensReclaimed,
+      cost_estimate_usd: costEstimateUsd,
+      plan_used: planKey,
+      quota_windows_relit: quotaWindowsRelit,
+    },
+    lines: {
+      overnight: durationHuman,
+      milestones: `${milestonesDone.length} / ${milestones.length}`,
+      decisions: `${decisionsTotal} routed · ${blockingCount} woke you`,
+      findings: `${findingsTotal} logged · ${bugFixedCount} bug${bugFixedCount === 1 ? '' : 's'} fixed`,
+    },
+    foot: {
+      session_short: session.id.slice(0, 8),
+      brand_url: 'goalnight.dev',
+    },
+  };
 }
 
 function buildFallbackBrief(d) {

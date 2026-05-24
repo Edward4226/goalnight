@@ -1,6 +1,6 @@
 {
   "name": "goalnight",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Set a goal, go to bed, wake up to a PR. An overnight goal-execution layer for Codex /goal mode.",
   "author": {
     "name": "Edward",

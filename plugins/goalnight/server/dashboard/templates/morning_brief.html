@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{title}}</title>
+  <link rel="icon" type="image/svg+xml" href="/owl-16.svg" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .brief {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 36px 56px;
+      font-family: var(--font-ui);
+      line-height: 1.55;
+      color: var(--text-primary);
+    }
+    .brief h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 0 0 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brief h1 .mark { width: 28px; height: 28px; }
+    .brief h1 .mark img { width: 100%; height: 100%; display: block; }
+    .brief h1 .dim { color: var(--text-secondary); font-weight: 500; }
+
+    .brief .tldr {
+      border-left: 2px solid var(--moon-yellow);
+      padding: 4px 0 4px 14px;
+      margin: 0 0 22px;
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 500;
+      font-style: italic;
+      text-wrap: pretty;
+    }
+    .brief .meta-line {
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin: 0 0 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-hairline);
+    }
+    .brief .meta-line b { color: var(--text-primary); font-weight: 600; }
+    .brief .meta-line .mono { color: var(--text-secondary); font-family: var(--font-mono); }
+
+    .brief h2 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin: 26px 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: uppercase;
+    }
+    .brief h2 .count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .brief h2.blocking  { color: var(--warm-orange); }
+    .brief h2.uncertain { color: var(--status-warning); }
+    .brief h2.done      { color: var(--status-success); }
+    .brief h2.pending   { color: var(--text-secondary); }
+    .brief h2.findings  { color: var(--status-info); }
+    .brief section[hidden] { display: none; }
+
+    .brief ul { list-style: none; padding: 0; margin: 0; }
+    .brief li {
+      padding: 8px 0 8px 18px;
+      position: relative;
+      font-size: 14px;
+      color: var(--text-primary);
+      text-wrap: pretty;
+    }
+    .brief li::before {
+      content: '';
+      position: absolute;
+      left: 2px; top: 16px;
+      width: 6px; height: 1px;
+      background: var(--text-muted);
+    }
+    .brief li.empty {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    .brief li.empty::before { display: none; }
+    .brief li .sub {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    .brief li .sub .k {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+<body data-screen-label="morning-brief" style="background:var(--bg-base)">
+  <article class="brief">
+    <h1>
+      <span class="mark"><img src="/owl.svg" alt="" /></span>
+      goalnight <span class="dim">— morning brief</span>
+    </h1>
+
+    <p class="tldr">{{summary}}</p>
+
+    <p class="meta-line">
+      <b>Goal:</b> {{objective}}<br>
+      <b>Status:</b> {{status}} · <b>Time:</b> {{duration_human}} · <b>Tokens:</b> <span class="mono">{{tokens_human}}</span>
+    </p>
+
+    <section {{hide_blocking}}>
+      <h2 class="blocking">⚠ Decisions waiting for you <span class="count">{{decisions_blocking_count}}</span></h2>
+      <ul>{{decisions_blocking_html}}</ul>
+    </section>
+
+    <section {{hide_uncertain}}>
+      <h2 class="uncertain">🤔 Decisions you might want to review <span class="count">{{decisions_uncertain_count}}</span></h2>
+      <ul>{{decisions_uncertain_html}}</ul>
+    </section>
+
+    <h2 class="done">✓ Done <span class="count">{{milestones_done_count}}</span></h2>
+    <ul>{{milestones_done_html}}</ul>
+
+    <h2 class="pending">⋯ Pending <span class="count">{{milestones_pending_count}}</span></h2>
+    <ul>{{milestones_pending_html}}</ul>
+
+    <section {{hide_findings}}>
+      <h2 class="findings">📝 Notable findings <span class="count">{{findings_count}}</span></h2>
+      <ul>{{findings_html}}</ul>
+    </section>
+
+  </article>
+</body>
+</html>

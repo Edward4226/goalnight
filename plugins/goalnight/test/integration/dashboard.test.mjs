@@ -74,6 +74,61 @@ test('GET /api/status returns the fixture session shape', async () => {
 
   const states = r.milestones.map(m => m.state).sort();
   assert.deepEqual(states, ['done', 'in_progress', 'pending']);
+
+  // v0.1.2 augmentations — dashboard needs these for the goal meta-row,
+  // quota timeline, and sparkline.
+  assert.ok(Number.isInteger(r.started_at), 'started_at is set from sessions.created_at');
+  assert.ok(Number.isInteger(r.wake_time),  'wake_time is started_at + hours');
+  assert.equal(typeof r.quota_windows_relit, 'number');
+  assert.ok(Array.isArray(r.burn_series),    'burn_series is a ring buffer (possibly empty on first call)');
+});
+
+test('GET /api/brief?format=html renders the morning-brief template', async () => {
+  const res = await fetch(`${baseUrl}/api/brief?format=html`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  const html = await res.text();
+  assert.match(html, /<!doctype html>/i);
+  assert.match(html, /morning brief/i);
+  assert.match(html, /implement user profile feature/);  // objective substituted
+  assert.match(html, /Postgres or stay on SQLite/);      // blocking decision rendered
+  assert.doesNotMatch(html, /\{\{\s*\w+\s*\}\}/, 'no unresolved template vars');
+});
+
+test('GET /owl-16.svg serves the favicon SVG', async () => {
+  const res = await fetch(`${baseUrl}/owl-16.svg`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /image\/svg\+xml/);
+  const body = await res.text();
+  assert.match(body, /<svg/);
+});
+
+test('GET /owl.svg serves the topbar mark', async () => {
+  const res = await fetch(`${baseUrl}/owl.svg`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /image\/svg\+xml/);
+});
+
+test('GET / serves the dashboard with the new DOM ids', async () => {
+  const res = await fetch(`${baseUrl}/`);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  // Spot-check ids the SSE renderer keys off — fails fast if the HTML
+  // and JS contracts drift apart.
+  for (const id of [
+    'status-pill', 'status-pill-dot', 'quota-pill',
+    'goal-objective', 'goal-session-short', 'goal-started-when',
+    'goal-target', 'goal-budget', 'goal-wake',
+    'stat-elapsed-v', 'stat-tokens-v', 'stat-burn-v', 'stat-burn-sparkline',
+    'stat-eta-v', 'stat-refresh-v',
+    'milestones-meta', 'milestones-list',
+    'decisions-meta', 'decisions-blocking-list', 'decisions-uncertain-list',
+    'findings-meta', 'findings-list',
+    'quota-reset', 'quota-timeline', 'quota-legend',
+    'footer-receipt-link',
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`), `index.html is missing id="${id}"`);
+  }
 });
 
 test('GET /api/brief includes decisions, findings, markdown', async () => {
@@ -94,6 +149,39 @@ test('GET /api/brief includes decisions, findings, markdown', async () => {
 test('GET /api/status returns a static 404 for unknown route', async () => {
   const res = await fetch(`${baseUrl}/api/does-not-exist`);
   assert.equal(res.status, 404);
+});
+
+test('GET /api/receipt/:id returns rendered HTML with brand watermark', async () => {
+  const res = await fetch(`${baseUrl}/api/receipt/${fixture.session_id}`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  const body = await res.text();
+  // Brand watermark must be present.
+  assert.match(body, /goalnight\.dev/);
+  // Session short-id (first 8 chars) must be in the foot.
+  assert.match(body, new RegExp(`session ${fixture.session_id.slice(0, 8)}`));
+  // Lines should reflect the fixture: 1 done of 3 milestones, 1 blocking decision, 2 findings.
+  assert.match(body, /1 \/ 3/);
+  assert.match(body, /1 routed · 1 woke you/);
+  assert.match(body, /2 logged · 0 bugs fixed/);
+  // Static template structure preserved (overnight receipt header).
+  assert.match(body, /overnight receipt/);
+});
+
+test('GET /api/receipt/:id accepts an 8-char session prefix', async () => {
+  const short = fixture.session_id.slice(0, 8);
+  const res = await fetch(`${baseUrl}/api/receipt/${short}`);
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, new RegExp(`session ${short}`));
+});
+
+test('GET /api/receipt/:id returns a clean 404 for an unknown session', async () => {
+  const res = await fetch(`${baseUrl}/api/receipt/does-not-exist`);
+  assert.equal(res.status, 404);
+  const body = await res.text();
+  assert.match(body, /Receipt unavailable/);
+  assert.match(body, /session not found/);
 });
 
 test('GET /events emits at least one `status` SSE frame', async () => {

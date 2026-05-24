@@ -2,165 +2,202 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>goalnight</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%8C%99%3C/text%3E%3C/svg%3E" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="icon" type="image/svg+xml" href="/owl-16.svg" />
   <link rel="stylesheet" href="/styles.css" />
-</head>
-<body>
-  <main class="page">
+  <style>
+    /* Empty-state — shown when no session is active. */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding: 64px 24px 72px;
+      text-align: center;
+    }
+    .empty-state .owl { width: 132px; height: 132px; opacity: 0.85; }
+    .empty-state .title { font-size: 18px; font-weight: 600; color: var(--text-secondary); margin: 0; }
+    .empty-state .hint { font-size: 13px; color: var(--text-muted); margin: 0; max-width: 420px; line-height: 1.55; }
+    .empty-state .cmd {
+      font-family: var(--font-mono);
+      background: var(--bg-panel);
+      padding: 2px 6px;
+      border-radius: var(--r-sm);
+      color: var(--text-secondary);
+    }
 
-    <!-- ▒▒ 1. Top bar ▒▒ -->
-    <header class="top-bar" aria-label="Status">
+    /* Footer — small muted strip below the cards. */
+    .receipt-foot {
+      margin-top: 8px;
+      padding: 14px 0 0;
+      border-top: 1px solid var(--border-hairline);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+    .receipt-foot a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 120ms ease;
+    }
+    .receipt-foot a:hover { color: var(--moon-yellow); }
+    .receipt-foot .dot-sep { opacity: 0.5; }
+    .receipt-foot .spacer { flex: 1; }
+    .receipt-foot #conn-state { letter-spacing: 0.04em; }
+
+    /* When the dashboard has no session, hide cards + show empty state. */
+    body[data-empty="true"] .shell > .card,
+    body[data-empty="true"] .shell > .stats,
+    body[data-empty="true"] .shell > .receipt-foot { display: none; }
+    body:not([data-empty="true"]) .shell > .empty-state { display: none; }
+  </style>
+</head>
+<body data-screen-label="dashboard" data-empty="true">
+  <div class="shell">
+
+    <!-- ── 1. TOP BAR ─────────────────────────────────────────── -->
+    <header class="topbar">
       <div class="brand">
-        <svg class="mascot" viewBox="0 0 32 32" aria-hidden="true">
-          <!-- minimalist owl silhouette with moon-yellow eyes -->
-          <circle cx="16" cy="17" r="11" fill="#1d3b53" stroke="#2c4a6a" stroke-width="1" />
-          <circle cx="11.5" cy="15" r="3" fill="#0b2942" />
-          <circle cx="20.5" cy="15" r="3" fill="#0b2942" />
-          <circle cx="11.5" cy="15" r="1.5" fill="#FFEB95" />
-          <circle cx="20.5" cy="15" r="1.5" fill="#FFEB95" />
-          <path d="M14 21 q2 1.4 4 0" stroke="#FFEB95" stroke-width="1.2" fill="none" stroke-linecap="round" />
-          <path d="M6 9 l4 4 M26 9 l-4 4" stroke="#1d3b53" stroke-width="2" stroke-linecap="round" />
-        </svg>
-        <div class="brand-text">
-          <div class="brand-title">goalnight</div>
-          <div class="brand-sub" id="brand-sub">idle</div>
-        </div>
+        <span class="mark" id="brand-mark"><img src="/owl.svg" alt="" /></span>
+        <span class="name">goalnight</span>
       </div>
-      <div class="hero-objective" id="hero-objective" aria-live="polite">
-        set a goal, go to bed, wake up to a PR.
-      </div>
-      <div class="hero-status">
-        <span class="status-pill" id="status-pill" data-state="none">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span class="status-label" id="status-label">No session</span>
-        </span>
-        <span class="quota-chip" id="quota-chip" title="5h quota usage">— / —</span>
-      </div>
+      <div class="spacer"></div>
+      <span class="pill" id="status-pill">
+        <span class="dot" id="status-pill-dot"></span>
+        <span id="status-pill-text">connecting…</span>
+      </span>
+      <span class="pill mono" id="quota-pill">
+        <span class="label">5h quota</span>
+        <span id="quota-pill-text">—</span>
+      </span>
     </header>
 
-    <!-- ▒▒ 2. Goal card ▒▒ -->
-    <section class="card" id="goal-card" aria-labelledby="goal-heading">
+    <!-- ── 1b. EMPTY STATE ────────────────────────────────────── -->
+    <div class="empty-state">
+      <img class="owl" src="/owl-sleeping.svg" alt="" />
+      <p class="title">No active goalnight session</p>
+      <p class="hint">
+        Start one from inside a Codex session — <span class="cmd">@goalnight plan 8h to …</span> —
+        then come back here. The dashboard auto-refreshes when a session begins.
+      </p>
+    </div>
+
+    <!-- ── 2. GOAL ────────────────────────────────────────────── -->
+    <section class="card goal-card">
       <div class="card-head">
-        <div class="card-label" id="goal-heading">Objective</div>
-        <div class="card-meta mono" id="goal-started">—</div>
+        <h2 class="t-h2 secondary">Goal</h2>
+        <span class="meta mono"><span id="goal-session-short">—</span> · <span id="goal-started-when">—</span></span>
       </div>
-      <div class="goal-text" id="goal-text">No active goalnight session.</div>
-      <div class="goal-session mono" id="goal-session-id"></div>
+      <p class="objective" id="goal-objective">—</p>
+      <div class="meta-row">
+        <span><span class="k">target&nbsp;</span><span class="v mono" id="goal-target">—</span></span>
+        <span><span class="k">budget&nbsp;</span><span class="v mono" id="goal-budget">—</span></span>
+        <span><span class="k">wake&nbsp;me&nbsp;</span><span class="v mono" id="goal-wake">—</span></span>
+      </div>
     </section>
 
-    <!-- ▒▒ 3. Stats row ▒▒ -->
-    <section class="stats-row" aria-label="Run statistics">
-      <article class="card stat-card">
-        <div class="card-label">Elapsed</div>
-        <div class="stat-number mono" id="stat-elapsed">—</div>
-        <div class="stat-sub" id="stat-elapsed-sub">since start</div>
-      </article>
-
-      <article class="card stat-card">
-        <div class="card-label">Tokens used</div>
-        <div class="stat-number mono" id="stat-tokens">—</div>
-        <div class="stat-sub" id="stat-tokens-sub">of budget</div>
-      </article>
-
-      <article class="card stat-card stat-burn">
-        <div class="card-label">Burn rate</div>
-        <div class="stat-number-row">
-          <span class="stat-number mono accent" id="stat-burn">—</span>
-          <span class="stat-unit">tok/min</span>
-        </div>
-        <div class="sparkline-wrap">
-          <svg class="sparkline" id="sparkline" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true">
-            <polyline id="sparkline-path" fill="none" stroke="#FFEB95" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
-            <circle id="sparkline-head" r="2" fill="#FFEB95" />
-          </svg>
-        </div>
-        <div class="stat-sub" id="stat-eta">ETA —</div>
-      </article>
+    <!-- ── 3. STATS ROW ──────────────────────────────────────── -->
+    <section class="stats" aria-label="session stats">
+      <div class="stat">
+        <span class="k">elapsed</span>
+        <span class="v" id="stat-elapsed-v">—</span>
+        <span class="sub" id="stat-elapsed-sub">of budget</span>
+      </div>
+      <div class="stat">
+        <span class="k">tokens</span>
+        <span class="v" id="stat-tokens-v">—</span>
+        <span class="sub" id="stat-tokens-sub">/ —</span>
+      </div>
+      <div class="stat">
+        <span class="k">burn rate</span>
+        <span class="v accent" id="stat-burn-v">—<span class="sub" id="stat-burn-sub" style="font-size:12px;color:var(--text-muted)">/hr</span></span>
+        <svg class="sparkline" id="stat-burn-sparkline" viewBox="0 0 100 18" preserveAspectRatio="none" aria-hidden="true">
+          <polyline points="" fill="none" stroke="#F5B23E" stroke-width="1.4"
+                    stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>
+        </svg>
+      </div>
+      <div class="stat">
+        <span class="k">eta</span>
+        <span class="v" id="stat-eta-v">—</span>
+        <span class="sub" id="stat-eta-sub">—</span>
+      </div>
+      <div class="stat">
+        <span class="k">next refresh</span>
+        <span class="v accent" id="stat-refresh-v">—</span>
+        <span class="sub" id="stat-refresh-sub">—</span>
+      </div>
     </section>
 
-    <!-- ▒▒ 4. Milestones ▒▒ -->
-    <section class="card" aria-labelledby="ms-heading">
+    <!-- ── 4. MILESTONES ─────────────────────────────────────── -->
+    <section class="card">
       <div class="card-head">
-        <h2 class="card-title" id="ms-heading">Milestones</h2>
-        <div class="card-meta" id="ms-progress">0 of 0 done</div>
+        <h2 class="t-h2">Milestones</h2>
+        <span class="meta mono" id="milestones-meta">— done · — in progress · — pending</span>
       </div>
-      <ul class="milestone-list" id="milestone-list">
-        <li class="empty-row">No milestones yet — run <code>gn plan-night</code> to seed one.</li>
+      <div class="milestones" id="milestones-list">
+        <!-- populated by dashboard.js -->
+      </div>
+    </section>
+
+    <!-- ── 5. DECISIONS ──────────────────────────────────────── -->
+    <section class="card warn decisions" id="decisions-card">
+      <div class="card-head">
+        <h2 class="t-h2">Decisions</h2>
+        <span class="meta mono" id="decisions-meta">— blocking · — to review</span>
+      </div>
+
+      <h3 id="decisions-blocking-h">Waiting for you</h3>
+      <ul id="decisions-blocking-list">
+        <!-- populated by dashboard.js -->
+      </ul>
+
+      <h3 class="uncertain" id="decisions-uncertain-h">Proceeded — worth a sanity check</h3>
+      <ul id="decisions-uncertain-list">
+        <!-- populated by dashboard.js -->
       </ul>
     </section>
 
-    <!-- ▒▒ 5. Decisions waiting (high priority) ▒▒ -->
-    <section class="card decisions-card" id="decisions-card" aria-labelledby="dec-heading" data-empty="true">
+    <!-- ── 6. FINDINGS ───────────────────────────────────────── -->
+    <section class="card findings">
       <div class="card-head">
-        <h2 class="card-title accent-orange" id="dec-heading">
-          <span class="warn-icon" aria-hidden="true">⚠</span>
-          Decisions waiting
-          <span class="pulse-dot" aria-hidden="true"></span>
-        </h2>
-        <div class="card-meta accent-orange" id="dec-count">0 pending</div>
+        <h2 class="t-h2">Findings</h2>
+        <span class="meta mono" id="findings-meta">— logged</span>
       </div>
-      <div class="decisions-body" id="decisions-body">
-        <div class="empty-row">Nothing waiting on you right now.</div>
+      <ul id="findings-list">
+        <!-- populated by dashboard.js -->
+      </ul>
+    </section>
+
+    <!-- ── 7. QUOTA TIMELINE ─────────────────────────────────── -->
+    <section class="card quota">
+      <div class="head-row">
+        <h2 class="t-h2">Quota timeline · 5h windows</h2>
+        <span class="reset" id="quota-reset">next refresh in <b>—</b></span>
+      </div>
+      <div class="timeline" id="quota-timeline" aria-label="quota timeline">
+        <!-- segments populated by dashboard.js -->
+      </div>
+      <div class="timeline-legend" id="quota-legend">
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
       </div>
     </section>
 
-    <!-- ▒▒ 6. Findings stream ▒▒ -->
-    <section class="card findings-card" aria-labelledby="find-heading">
-      <div class="card-head">
-        <h2 class="card-title" id="find-heading">Findings</h2>
-        <div class="card-meta">
-          <span class="live-chip"><span class="live-dot"></span>live</span>
-        </div>
-      </div>
-      <ol class="findings-list" id="findings-list">
-        <li class="empty-row">No findings logged yet.</li>
-      </ol>
-    </section>
-
-    <!-- ▒▒ 7. Quota timeline ▒▒ -->
-    <section class="card" aria-labelledby="quota-heading">
-      <div class="card-head">
-        <h2 class="card-title" id="quota-heading">Quota</h2>
-        <div class="card-meta mono" id="quota-reset">next reset —</div>
-      </div>
-      <div class="quota-rows">
-        <div class="quota-row">
-          <div class="quota-label">5h window</div>
-          <div class="quota-bar" data-tone="moon">
-            <div class="quota-fill" id="quota-5h-fill"></div>
-          </div>
-          <div class="quota-pct mono" id="quota-5h-pct">—</div>
-        </div>
-        <!-- v0.1: Weekly Sonnet/Opus rows hidden (data source pending) — kept in DOM for JS handles. -->
-        <div class="quota-row" hidden>
-          <div class="quota-label">Weekly Sonnet</div>
-          <div class="quota-bar" data-tone="orange">
-            <div class="quota-fill" id="quota-sonnet-fill"></div>
-          </div>
-          <div class="quota-pct mono" id="quota-sonnet-pct">—</div>
-        </div>
-        <div class="quota-row" hidden>
-          <div class="quota-label">Weekly Opus</div>
-          <div class="quota-bar" data-tone="pink">
-            <div class="quota-fill" id="quota-opus-fill"></div>
-          </div>
-          <div class="quota-pct mono" id="quota-opus-pct">—</div>
-        </div>
-      </div>
-      <div class="quota-footnote" id="quota-foot">5h resets —</div>
-    </section>
-
-    <footer class="page-foot">
-      <span>🌙 goalnight v0.1</span>
+    <!-- ── 8. FOOTER ─────────────────────────────────────────── -->
+    <footer class="receipt-foot">
+      <a id="footer-receipt-link" href="#" target="_blank" rel="noopener">📜 View overnight receipt</a>
       <span class="dot-sep">·</span>
+      <a href="/api/brief?format=html" target="_blank" rel="noopener">📰 Morning brief</a>
+      <span class="spacer"></span>
       <span id="conn-state">connecting…</span>
     </footer>
-  </main>
+
+  </div>
 
   <script src="/dashboard.js" defer></script>
 </body>

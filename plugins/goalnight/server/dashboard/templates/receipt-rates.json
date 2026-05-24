@@ -1,0 +1,21 @@
+{
+  "default_plan": "pro",
+  "_comment": "Per-Mtok USD pricing used by the Token Waste Receipt cost estimate. These are blended approximations of effective $/Mtok at full quota use, not Anthropic/OpenAI list prices. Tune via real-user feedback. Override the active plan with GOALNIGHT_PLAN=<key>.",
+  "plans": {
+    "pro": {
+      "name": "Codex Pro",
+      "usd_per_million_tokens": 150,
+      "comment": "ChatGPT Pro: $200/mo at ~1.33Mtok/mo blended ≈ $150/Mtok. Approximate — refine with telemetry."
+    },
+    "plus": {
+      "name": "Codex Plus",
+      "usd_per_million_tokens": 200,
+      "comment": "ChatGPT Plus: $20/mo at a much smaller quota. Higher $/tok than Pro."
+    },
+    "team": {
+      "name": "Codex Team",
+      "usd_per_million_tokens": 130,
+      "comment": "Team seats spread quota across users → lower effective $/Mtok."
+    }
+  }
+}

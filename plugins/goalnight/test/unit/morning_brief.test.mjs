@@ -190,3 +190,149 @@ test('morning_brief: resolved uncertain decisions do NOT surface', async () => {
   assert.doesNotMatch(brief.markdown, /Decisions you might want to review/);
   assert.doesNotMatch(brief.summary_one_liner, /double-check/);
 });
+
+// ── Token Waste Receipt: receipt_data shape + compute ─────────────────────
+
+const QUOTA_WINDOW_SEC = 5 * 3600;
+
+/** Backdate a session and add fake tokens so burn-rate math is deterministic. */
+function ageSessionWithUsage(sessionId, elapsedSec, tokensUsed) {
+  const db = getDb();
+  const created = Date.now() - elapsedSec * 1000;
+  db.prepare('UPDATE sessions SET created_at = ?, tokens_used = ? WHERE id = ?')
+    .run(created, tokensUsed, sessionId);
+}
+
+/** Insert a turn_log row representing a quota refresh window goalnight relit through. */
+function logRelitTurn(sessionId) {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO turn_log
+       (session_id, turn_number, tokens_delta, tools_called,
+        goal_state_before, goal_state_after, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(sessionId, 1, 0, null, 'usage_limited', 'active', Date.now());
+}
+
+test('receipt_data: shape — all expected keys present, even on empty state', async () => {
+  const p = await planNight({ objective: 'shape check', milestones: ['m'] });
+  const brief = await morningBrief({ session_id: p.session_id });
+  const r = brief.receipt_data;
+
+  assert.ok(r, 'receipt_data present');
+  assert.equal(r.session_id, p.session_id);
+  for (const k of ['tokens_reclaimed', 'cost_estimate_usd', 'plan_used', 'quota_windows_relit']) {
+    assert.ok(k in r.headline, `headline.${k} present`);
+  }
+  for (const k of ['overnight', 'milestones', 'decisions', 'findings']) {
+    assert.ok(k in r.lines, `lines.${k} present`);
+  }
+  assert.equal(r.foot.session_short.length, 8, 'session_short is 8 chars');
+  assert.equal(r.foot.session_short, p.session_id.slice(0, 8));
+  assert.equal(r.foot.brand_url, 'goalnight.dev');
+
+  // Empty / 0-relit branch: reclaim is honestly 0; lines render sane defaults.
+  assert.equal(r.headline.tokens_reclaimed, 0);
+  assert.equal(r.headline.quota_windows_relit, 0);
+  assert.equal(r.lines.milestones, '0 / 1');
+  assert.equal(r.lines.decisions, '0 routed · 0 woke you');
+  assert.equal(r.lines.findings, '0 logged · 0 bugs fixed');
+});
+
+test('receipt_data: 0 relits → tokens_reclaimed=0; cost falls back on actual tokens_used', async () => {
+  const p = await planNight({ objective: 'clean run', milestones: ['m'] });
+  ageSessionWithUsage(p.session_id, 3600, 50000); // 1h, 50k tokens
+
+  const r = (await morningBrief({ session_id: p.session_id })).receipt_data;
+  assert.equal(r.headline.tokens_reclaimed, 0);
+  assert.equal(r.headline.quota_windows_relit, 0);
+  // 50k tok × $150/Mtok = $7.50 — cost shown on the actual usage in the 0-relit branch.
+  assert.equal(r.headline.cost_estimate_usd, 7.5);
+});
+
+test('receipt_data: 1 relit → tokens_reclaimed matches formula', async () => {
+  const p = await planNight({ objective: 'one relight', milestones: ['m'] });
+  // 6h elapsed, 60k tokens used → burn rate = 60000/360 min = ~167 tok/min, then rounded → 167.
+  // capped = min(1 * 18000s, 21600s) = 18000s = 300min.
+  // tokens_reclaimed = 300 * 167 = 50100.
+  ageSessionWithUsage(p.session_id, 6 * 3600, 60000);
+  logRelitTurn(p.session_id);
+
+  const r = (await morningBrief({ session_id: p.session_id })).receipt_data;
+  assert.equal(r.headline.quota_windows_relit, 1);
+
+  const burnRate = Math.round((60000 / (6 * 3600)) * 60);
+  const expectedReclaim = Math.round((QUOTA_WINDOW_SEC / 60) * burnRate);
+  assert.equal(r.headline.tokens_reclaimed, expectedReclaim);
+});
+
+test('receipt_data: tokens_reclaimed capped at elapsed time (multi-relit short session)', async () => {
+  // 1h elapsed but 3 windows relit — capped at the 1h of actual run.
+  const p = await planNight({ objective: 'cap me', milestones: ['m'] });
+  ageSessionWithUsage(p.session_id, 3600, 30000);
+  logRelitTurn(p.session_id);
+  logRelitTurn(p.session_id);
+  logRelitTurn(p.session_id);
+
+  const r = (await morningBrief({ session_id: p.session_id })).receipt_data;
+  assert.equal(r.headline.quota_windows_relit, 3);
+
+  // burn rate = 30000/60 = 500 tok/min. capped at 60 min = 30000 tokens.
+  assert.equal(r.headline.tokens_reclaimed, 30000);
+});
+
+test('receipt_data: cost_estimate uses GOALNIGHT_PLAN override; 2 decimals exactly', async () => {
+  const p = await planNight({ objective: 'plan switch', milestones: ['m'] });
+  ageSessionWithUsage(p.session_id, 6 * 3600, 60000);
+  logRelitTurn(p.session_id);
+
+  // Default (pro = $150/Mtok).
+  const defaultBrief = await morningBrief({ session_id: p.session_id });
+  const defaultCost = defaultBrief.receipt_data.headline.cost_estimate_usd;
+  const reclaim = defaultBrief.receipt_data.headline.tokens_reclaimed;
+  assert.equal(defaultCost, +((reclaim / 1_000_000) * 150).toFixed(2));
+  // Always 2 decimals → Number with at most 2 fractional digits.
+  assert.ok(/^\d+(\.\d{1,2})?$/.test(String(defaultCost)), `${defaultCost} has ≤2 decimals`);
+
+  process.env.GOALNIGHT_PLAN = 'plus';
+  try {
+    const r = (await morningBrief({ session_id: p.session_id })).receipt_data;
+    assert.equal(r.headline.plan_used, 'plus');
+    assert.equal(r.headline.cost_estimate_usd, +((reclaim / 1_000_000) * 200).toFixed(2));
+  } finally {
+    delete process.env.GOALNIGHT_PLAN;
+  }
+});
+
+test('receipt_data: lines reflect milestones/decisions/findings counts', async () => {
+  const p = await planNight({ objective: 'count me', milestones: ['a', 'b', 'c'] });
+  // 2 done, 1 pending.
+  getDb().prepare(
+    `UPDATE milestones SET state='done' WHERE session_id=? AND ordinal<=2`
+  ).run(p.session_id);
+
+  await logDecision({ question: 'normal one' });
+  await logDecision({ question: 'blocking one', blocking: true });
+
+  await logFinding({ type: 'bug', content: 'fixed a thing', severity: 'high' });
+  await logFinding({ type: 'insight', content: 'noted', severity: 'low' });
+  await logFinding({ type: 'note', content: 'fyi', severity: 'low' });
+
+  const r = (await morningBrief({ session_id: p.session_id })).receipt_data;
+  assert.equal(r.lines.milestones, '2 / 3');
+  assert.equal(r.lines.decisions, '2 routed · 1 woke you');
+  assert.equal(r.lines.findings, '3 logged · 1 bug fixed');
+});
+
+test('morning_brief.markdown remains unchanged when receipt_data is added (additive)', async () => {
+  // Regression guard: adding receipt_data must NOT touch the markdown output
+  // that downstream skills depend on.
+  await planNight({ objective: 'additive', milestones: ['m1', 'm2'] });
+  const brief = await morningBrief({});
+  assert.match(brief.markdown, /goalnight — morning brief/);
+  assert.match(brief.markdown, /Goal:.*additive/);
+  assert.match(brief.markdown, /Pending \(2\)/);
+  // Receipt data must not have bled into markdown.
+  assert.doesNotMatch(brief.markdown, /receipt_data/);
+  assert.doesNotMatch(brief.markdown, /tokens_reclaimed/);
+});

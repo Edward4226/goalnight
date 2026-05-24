@@ -1,10 +1,12 @@
 /* ─────────────────────────────────────────────────────────────
- * goalnight dashboard — SSE client + DOM renderer
+ * goalnight dashboard — SSE client + DOM renderer (v0.1.2)
  *
  * Connects to /events, receives `status` events every ~2s,
- * renders them into the existing block scaffolding. Brief data
- * (decisions, findings) is fetched separately because gn_status
- * doesn't carry the full bodies — only counts.
+ * renders them into the handback-derived block scaffolding.
+ *
+ * Decisions/findings bodies come from /api/brief (gn_status only
+ * carries counts). We refetch when counts shift or every ~10s
+ * so the dashboard stays in sync.
  * ──────────────────────────────────────────────────────────── */
 
 (() => {
@@ -13,70 +15,74 @@
   // ─── DOM refs ────────────────────────────────────────────
   const $ = (id) => document.getElementById(id);
   const dom = {
-    connState:     $('conn-state'),
-    brandSub:      $('brand-sub'),
-    heroObjective: $('hero-objective'),
-    statusPill:    $('status-pill'),
-    statusLabel:   $('status-label'),
-    quotaChip:     $('quota-chip'),
+    body:              document.body,
 
-    goalText:      $('goal-text'),
-    goalStarted:   $('goal-started'),
-    goalSessionId: $('goal-session-id'),
+    statusPill:        $('status-pill'),
+    statusPillDot:     $('status-pill-dot'),
+    statusPillText:    $('status-pill-text'),
+    quotaPill:         $('quota-pill'),
+    quotaPillText:     $('quota-pill-text'),
 
-    statElapsed:    $('stat-elapsed'),
-    statElapsedSub: $('stat-elapsed-sub'),
-    statTokens:     $('stat-tokens'),
-    statTokensSub:  $('stat-tokens-sub'),
-    statBurn:       $('stat-burn'),
-    statEta:        $('stat-eta'),
-    sparkline:      $('sparkline'),
-    sparklinePath:  $('sparkline-path'),
-    sparklineHead:  $('sparkline-head'),
+    goalObjective:     $('goal-objective'),
+    goalSessionShort:  $('goal-session-short'),
+    goalStartedWhen:   $('goal-started-when'),
+    goalTarget:        $('goal-target'),
+    goalBudget:        $('goal-budget'),
+    goalWake:          $('goal-wake'),
 
-    msList:     $('milestone-list'),
-    msProgress: $('ms-progress'),
+    statElapsedV:      $('stat-elapsed-v'),
+    statElapsedSub:    $('stat-elapsed-sub'),
+    statTokensV:       $('stat-tokens-v'),
+    statTokensSub:     $('stat-tokens-sub'),
+    statBurnV:         $('stat-burn-v'),
+    statBurnSub:       $('stat-burn-sub'),
+    statBurnSparkline: $('stat-burn-sparkline'),
+    statEtaV:          $('stat-eta-v'),
+    statEtaSub:        $('stat-eta-sub'),
+    statRefreshV:      $('stat-refresh-v'),
+    statRefreshSub:    $('stat-refresh-sub'),
 
-    decisionsCard: $('decisions-card'),
-    decisionsBody: $('decisions-body'),
-    decCount:      $('dec-count'),
+    milestonesMeta:    $('milestones-meta'),
+    milestonesList:    $('milestones-list'),
 
-    findingsList: $('findings-list'),
+    decisionsCard:        $('decisions-card'),
+    decisionsMeta:        $('decisions-meta'),
+    decisionsBlockingH:   $('decisions-blocking-h'),
+    decisionsBlockingList:$('decisions-blocking-list'),
+    decisionsUncertainH:  $('decisions-uncertain-h'),
+    decisionsUncertainList:$('decisions-uncertain-list'),
 
-    quota5hFill:     $('quota-5h-fill'),
-    quota5hPct:      $('quota-5h-pct'),
-    quotaSonnetFill: $('quota-sonnet-fill'),
-    quotaSonnetPct:  $('quota-sonnet-pct'),
-    quotaOpusFill:   $('quota-opus-fill'),
-    quotaOpusPct:    $('quota-opus-pct'),
-    quotaReset:      $('quota-reset'),
-    quotaFoot:       $('quota-foot'),
+    findingsMeta:      $('findings-meta'),
+    findingsList:      $('findings-list'),
+
+    quotaReset:        $('quota-reset'),
+    quotaTimeline:     $('quota-timeline'),
+    quotaLegend:       $('quota-legend'),
+
+    footerReceipt:     $('footer-receipt-link'),
+    connState:         $('conn-state'),
   };
 
   // ─── state ───────────────────────────────────────────────
-  const SPARK_POINTS = 60;
-  const sparkSeries = []; // burn rate (tokens/min) over time, newest last
+  // 13 points matches the sparkline viewBox in the handback frame.
+  const SPARK_POINTS = 13;
   let lastBriefFetchAt = 0;
-  let lastSessionId = null;
+  let lastSessionId    = null;
+  let lastDecCount     = -1;
+  let lastFindCount    = -1;
+  let lastFindingsAtMs = null;
 
-  const STATUS_LABELS = {
-    active:        'Running',
-    paused:        'Paused',
-    usage_limited: 'Quota wait',
-    blocked:       'Blocked',
-    complete:      'Done',
-    planned:       'Planned',
-    none:          'No session',
+  const STATE_LABEL = {
+    active:        'active',
+    paused:        'paused',
+    usage_limited: 'quota wait',
+    blocked:       'blocked',
+    complete:      'complete',
+    planned:       'planned',
+    none:          'no session',
   };
 
-  const FAVICON_BY_STATE = {
-    active:        '🔆',
-    usage_limited: '⏳',
-    blocked:       '⚠️',
-    complete:      '✅',
-  };
-
-  // ─── helpers ─────────────────────────────────────────────
+  // ─── time / number helpers ───────────────────────────────
   function fmtDuration(seconds) {
     if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '—';
     const s = Math.floor(seconds);
@@ -84,190 +90,152 @@
     const m = Math.floor((s % 3600) / 60);
     const sec = s % 60;
     if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m ${sec}s`;
+    if (m > 0) return `${m}m`;
     return `${sec}s`;
   }
 
-  function fmtNumber(n) {
-    if (n == null || !Number.isFinite(n)) return '—';
-    return n.toLocaleString('en-US');
+  function fmtDurationShort(seconds) {
+    if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '—';
+    const s = Math.max(0, Math.floor(seconds));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${h}:${String(m).padStart(2, '0')}`;
   }
 
-  function fmtRelativePast(unixMs) {
-    if (!unixMs) return '—';
-    const diff = Date.now() - unixMs;
-    if (diff < 0) return 'just now';
+  function fmtKTokens(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    if (n >= 100_000) return `${Math.round(n / 1000)}k`;
+    if (n >= 1000)    return `${(n / 1000).toFixed(1)}k`;
+    return `${n}`;
+  }
+
+  function fmtTimeOfDay(ms) {
+    if (!ms) return '—';
+    const d = new Date(ms);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+  }
+
+  function fmtStarted(ms) {
+    if (!ms) return '—';
+    const d = new Date(ms);
+    const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    return `started ${dow} ${fmtTimeOfDay(ms)}`;
+  }
+
+  function fmtRelativePast(ms) {
+    if (!ms) return '—';
+    const diff = Math.max(0, Date.now() - ms);
     return `${fmtDuration(diff / 1000)} ago`;
   }
 
-  function fmtRelativeFuture(unixMs) {
-    if (!unixMs) return '—';
-    const diff = unixMs - Date.now();
-    if (diff <= 0) return 'now';
-    return `in ${fmtDuration(diff / 1000)}`;
-  }
-
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+  function setText(el, text) { if (el && el.textContent !== text) el.textContent = text; }
 
-  function setText(el, text) {
-    if (el && el.textContent !== text) el.textContent = text;
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
-  function setFavicon(emoji) {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>${emoji}</text></svg>`;
-    const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
-    let link = document.querySelector("link[rel='icon']");
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.head.appendChild(link);
+  // ─── status pill ─────────────────────────────────────────
+  function renderStatusPill(snap) {
+    const state = snap.state || 'planned';
+    dom.statusPill.classList.remove('active', 'warn');
+    if (state === 'active' || state === 'complete') dom.statusPill.classList.add('active');
+    else if (state === 'usage_limited' || state === 'blocked') dom.statusPill.classList.add('warn');
+
+    const relit = snap.quota_windows_relit || 0;
+    const relitSuffix = relit > 0 ? ` · relit ${relit}×` : '';
+    setText(dom.statusPillText, `${STATE_LABEL[state] || state}${relitSuffix}`);
+  }
+
+  function renderQuotaPill(snap) {
+    if (snap.next_quota_reset_at) {
+      const diffSec = Math.max(0, Math.round((snap.next_quota_reset_at - Date.now()) / 1000));
+      setText(dom.quotaPillText, `resets in ${fmtDurationShort(diffSec)}`);
+    } else {
+      setText(dom.quotaPillText, 'no reset scheduled');
     }
-    link.href = url;
   }
 
-  // ─── sparkline (pure SVG, no Chart.js) ───────────────────
-  function pushSpark(value) {
-    sparkSeries.push(value);
-    while (sparkSeries.length > SPARK_POINTS) sparkSeries.shift();
-  }
+  // ─── goal card ───────────────────────────────────────────
+  function renderGoalCard(snap) {
+    setText(dom.goalObjective, snap.objective || '—');
+    setText(dom.goalSessionShort, (snap.session_id || '').slice(0, 8) || '—');
+    setText(dom.goalStartedWhen, fmtStarted(snap.started_at));
 
-  function renderSparkline() {
-    if (sparkSeries.length < 2) {
-      dom.sparklinePath.setAttribute('points', '');
-      dom.sparklineHead.setAttribute('cx', '0');
-      dom.sparklineHead.setAttribute('cy', '0');
-      dom.sparklineHead.setAttribute('opacity', '0');
-      return;
+    // target_paths: plan_night doesn't capture this in v0.1, so we stub
+    // gracefully with a placeholder rather than expanding scope.
+    setText(dom.goalTarget, snap.target_paths || '—');
+
+    // budget: derive hours-budget from elapsed + remaining, plus tokens.
+    let budgetTxt = '—';
+    if (snap.token_budget && snap.wake_time && snap.started_at) {
+      const totalH = Math.round((snap.wake_time - snap.started_at) / 3600_000);
+      budgetTxt = `${totalH}h / ${fmtKTokens(snap.token_budget)} tokens`;
+    } else if (snap.token_budget) {
+      budgetTxt = `${fmtKTokens(snap.token_budget)} tokens`;
     }
-    const max = Math.max(...sparkSeries, 1);
-    const min = Math.min(...sparkSeries, 0);
-    const range = Math.max(max - min, 1);
-    const w = 100, h = 32, pad = 2;
-    const points = sparkSeries.map((v, i) => {
-      const x = (i / (SPARK_POINTS - 1)) * w;
-      const y = h - pad - ((v - min) / range) * (h - pad * 2);
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    });
-    dom.sparklinePath.setAttribute('points', points.join(' '));
-    const last = points[points.length - 1].split(',');
-    dom.sparklineHead.setAttribute('cx', last[0]);
-    dom.sparklineHead.setAttribute('cy', last[1]);
-    dom.sparklineHead.setAttribute('opacity', '1');
+    setText(dom.goalBudget, budgetTxt);
+
+    setText(dom.goalWake, snap.wake_time ? `${fmtTimeOfDay(snap.wake_time)}` : '—');
   }
 
-  // ─── render: status snapshot ─────────────────────────────
-  function renderStatus(snap) {
-    // empty / no-session shape
-    if (!snap || snap.state === 'none' || !snap.session_id) {
-      renderEmpty();
-      return;
-    }
-
-    const stateChanged = lastSessionId !== snap.session_id;
-    lastSessionId = snap.session_id;
-
-    // top bar
-    const stateKey = snap.state || 'planned';
-    dom.statusPill.dataset.state = stateKey;
-    setText(dom.statusLabel, STATUS_LABELS[stateKey] || stateKey);
-    setText(dom.brandSub, `/goal · ${STATUS_LABELS[stateKey] || stateKey}`);
-    setText(dom.heroObjective, snap.objective || '—');
-
-    // quota chip (5h-window approximation: tokens_used / token_budget)
-    const pct5h = computeQuotaPct(snap.tokens_used, snap.token_budget);
-    setText(dom.quotaChip, `${pct5h}% / 5h`);
-
-    // document title sync
-    document.title = `(${pct5h}%) goalnight · ${STATUS_LABELS[stateKey] || stateKey}`;
-    setFavicon(FAVICON_BY_STATE[stateKey] || '🌙');
-
-    // goal card
-    setText(dom.goalText, snap.objective || '—');
-    setText(dom.goalSessionId, `session ${snap.session_id}`);
-    // goal-started: derive from elapsed_seconds, since status doesn't carry created_at
-    setText(dom.goalStarted, snap.elapsed_seconds != null
-      ? `Started ${fmtDuration(snap.elapsed_seconds)} ago`
-      : '—');
-
-    // stats row
-    setText(dom.statElapsed, fmtDuration(snap.elapsed_seconds));
+  // ─── stats row ───────────────────────────────────────────
+  function renderStats(snap) {
+    setText(dom.statElapsedV, fmtDuration(snap.elapsed_seconds));
     setText(dom.statElapsedSub,
-      snap.next_quota_reset_at
-        ? `reset ${fmtRelativeFuture(snap.next_quota_reset_at)}`
+      snap.wake_time && snap.started_at
+        ? `of ${Math.round((snap.wake_time - snap.started_at) / 3600_000)}h budget`
         : 'since start');
 
-    setText(dom.statTokens, fmtNumber(snap.tokens_used));
-    setText(dom.statTokensSub,
-      snap.token_budget
-        ? `of ${fmtNumber(snap.token_budget)} budget`
-        : 'no budget set');
+    setText(dom.statTokensV, fmtKTokens(snap.tokens_used));
+    if (snap.token_budget) {
+      const pct = clamp(Math.round((snap.tokens_used / snap.token_budget) * 100), 0, 999);
+      setText(dom.statTokensSub, `/ ${fmtKTokens(snap.token_budget)} · ${pct}%`);
+    } else {
+      setText(dom.statTokensSub, 'no budget set');
+    }
 
-    setText(dom.statBurn, fmtNumber(snap.burn_rate_tokens_per_min));
-    const etaSec = computeEta(snap);
-    setText(dom.statEta, etaSec != null ? `ETA ${fmtDuration(etaSec)}` : 'ETA —');
+    // Burn rate is emitted as tokens-per-minute; the stat card shows /hr to
+    // match the handback frame.
+    const burnPerHr = (snap.burn_rate_tokens_per_min || 0) * 60;
+    setText(dom.statBurnV, fmtKTokens(burnPerHr));
+    setText(dom.statBurnSub, '/hr');
+    renderSparkline(snap.burn_series || []);
 
-    pushSpark(snap.burn_rate_tokens_per_min || 0);
-    renderSparkline();
+    // ETA = wake_time if scheduled; otherwise derive from burn vs remaining.
+    if (snap.wake_time) {
+      setText(dom.statEtaV, fmtTimeOfDay(snap.wake_time));
+      setText(dom.statEtaSub, etaLabel(snap));
+    } else {
+      const sec = etaFromBurn(snap);
+      setText(dom.statEtaV, sec != null ? fmtDuration(sec) : '—');
+      setText(dom.statEtaSub, sec != null ? 'until budget' : 'no budget');
+    }
 
-    // milestones
-    renderMilestones(snap.milestones || []);
-
-    // quota timeline
-    renderQuota(snap, pct5h);
-
-    // if decisions/findings count changed (or session changed) → re-fetch brief
-    const decCountText = dom.decCount.textContent || '';
-    const decShown = parseInt(decCountText, 10) || 0;
-    const decFromStatus = snap.pending_decisions_count || 0;
-    if (stateChanged || decFromStatus !== decShown || (Date.now() - lastBriefFetchAt) > 10_000) {
-      fetchBrief();
+    // Next refresh — countdown to next_quota_reset_at.
+    if (snap.next_quota_reset_at) {
+      const diffSec = Math.max(0, Math.round((snap.next_quota_reset_at - Date.now()) / 1000));
+      setText(dom.statRefreshV, fmtDurationShort(diffSec));
+      const win = snap.quota_windows_relit != null
+        ? `window ${snap.quota_windows_relit + 1}`
+        : '—';
+      setText(dom.statRefreshSub, win);
+    } else {
+      setText(dom.statRefreshV, '—');
+      setText(dom.statRefreshSub, 'no refresh scheduled');
     }
   }
 
-  function renderEmpty() {
-    dom.statusPill.dataset.state = 'none';
-    setText(dom.statusLabel, 'No session');
-    setText(dom.brandSub, 'idle');
-    setText(dom.heroObjective, 'set a goal, go to bed, wake up to a PR.');
-    setText(dom.quotaChip, '— / —');
-    document.title = 'goalnight · idle';
-    setFavicon('🌙');
-
-    setText(dom.goalText, 'No active goalnight session.');
-    setText(dom.goalSessionId, '');
-    setText(dom.goalStarted, '—');
-
-    setText(dom.statElapsed, '—');
-    setText(dom.statElapsedSub, 'since start');
-    setText(dom.statTokens, '—');
-    setText(dom.statTokensSub, 'of budget');
-    setText(dom.statBurn, '—');
-    setText(dom.statEta, 'ETA —');
-    sparkSeries.length = 0;
-    renderSparkline();
-
-    dom.msList.innerHTML = `<li class="empty-row">No milestones yet — run <code>gn plan-night</code> to seed one.</li>`;
-    setText(dom.msProgress, '0 of 0 done');
-
-    dom.decisionsCard.dataset.empty = 'true';
-    setText(dom.decCount, '0 pending');
-    dom.decisionsBody.innerHTML = `<div class="empty-row">Nothing waiting on you right now.</div>`;
-
-    dom.findingsList.innerHTML = `<li class="empty-row">No findings logged yet.</li>`;
-
-    setQuotaBar(dom.quota5hFill,     dom.quota5hPct,     0);
-    setQuotaBar(dom.quotaSonnetFill, dom.quotaSonnetPct, 0);
-    setQuotaBar(dom.quotaOpusFill,   dom.quotaOpusPct,   0);
-    setText(dom.quotaReset, 'next reset —');
-    setText(dom.quotaFoot, '5h resets —');
-  }
-
-  function computeQuotaPct(used, budget) {
-    if (!budget || !Number.isFinite(used)) return 0;
-    return clamp(Math.round((used / budget) * 100), 0, 100);
-  }
-
-  function computeEta(snap) {
+  function etaFromBurn(snap) {
     if (!snap.token_budget || !snap.burn_rate_tokens_per_min) return null;
     const remaining = snap.token_budget - (snap.tokens_used || 0);
     if (remaining <= 0) return 0;
@@ -276,158 +244,316 @@
     return Math.round(remaining / ratePerSec);
   }
 
-  // ─── render: milestones ──────────────────────────────────
+  function etaLabel(snap) {
+    // "on schedule" / "behind" / "ahead" based on elapsed vs wake time.
+    if (!snap.wake_time || !snap.started_at || !snap.token_budget) return '—';
+    const totalMs    = snap.wake_time - snap.started_at;
+    const elapsedMs  = Date.now() - snap.started_at;
+    const expectedPct = clamp(elapsedMs / totalMs, 0, 1);
+    const actualPct   = clamp((snap.tokens_used || 0) / snap.token_budget, 0, 1);
+    const diff = actualPct - expectedPct;
+    if (diff > 0.08) return 'ahead';
+    if (diff < -0.08) return 'behind';
+    return 'on schedule';
+  }
+
+  // ─── sparkline ───────────────────────────────────────────
+  function renderSparkline(series) {
+    const poly = dom.statBurnSparkline.querySelector('polyline');
+    if (!poly) return;
+    if (!series || series.length < 2) {
+      poly.setAttribute('points', '');
+      return;
+    }
+    const w = 100, h = 18;
+    const max = Math.max(...series, 1);
+    const min = Math.min(...series, 0);
+    const range = Math.max(max - min, 1);
+    const n = Math.min(series.length, SPARK_POINTS);
+    const pts = series.slice(-n).map((v, i) => {
+      const x = (i / (SPARK_POINTS - 1)) * w;
+      const y = h - 2 - ((v - min) / range) * (h - 4);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    poly.setAttribute('points', pts.join(' '));
+  }
+
+  // ─── milestones ──────────────────────────────────────────
+  const ICON_DONE = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <circle cx="8" cy="8" r="7" fill="#9EC76A" fill-opacity="0.18" stroke="currentColor" stroke-width="1.4"/>
+    <path d="M4.5 8.2 L7 10.5 L11.5 5.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>`;
+  const ICON_PENDING = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2.4" opacity="0.7"/>
+  </svg>`;
+  const ICON_SKIPPED = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.4" opacity="0.4"/>
+    <path d="M5 8 L11 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  </svg>`;
+  const ICON_ACTIVE = `<span class="spinner" aria-label="in progress"></span>`;
+
   function milestoneIcon(state) {
     switch (state) {
-      case 'done':        return '✓';
-      case 'in_progress': return '◐';
-      case 'skipped':     return '↷';
-      default:            return '○';
+      case 'done':         return ICON_DONE;
+      case 'in_progress':  return ICON_ACTIVE;
+      case 'skipped':      return ICON_SKIPPED;
+      default:             return ICON_PENDING;
     }
+  }
+
+  function milestoneAux(m) {
+    if (m.state === 'in_progress' && m.started_at) {
+      const elapsedSec = (Date.now() - m.started_at) / 1000;
+      return `${fmtDuration(elapsedSec)} elapsed`;
+    }
+    if (m.state === 'done' && m.started_at && m.completed_at) {
+      return fmtDuration((m.completed_at - m.started_at) / 1000);
+    }
+    if (m.state === 'done' && m.completed_at) {
+      return fmtRelativePast(m.completed_at);
+    }
+    if (m.state === 'pending' && m.estimated_tokens) {
+      return `est. ${fmtKTokens(m.estimated_tokens)}`;
+    }
+    return '';
   }
 
   function renderMilestones(milestones) {
     const total = milestones.length;
     const done  = milestones.filter(m => m.state === 'done').length;
-    setText(dom.msProgress, `${done} of ${total} done`);
+    const inProg = milestones.filter(m => m.state === 'in_progress').length;
+    const pending = milestones.filter(m => m.state === 'pending').length;
+    setText(dom.milestonesMeta, `${done} done · ${inProg} in progress · ${pending} pending`);
 
     if (total === 0) {
-      dom.msList.innerHTML = `<li class="empty-row">No milestones yet — run <code>gn plan-night</code> to seed one.</li>`;
+      dom.milestonesList.innerHTML =
+        `<div class="ms-row pending"><span class="icon">${ICON_PENDING}</span><span class="title">No milestones yet — run <span class="mono">gn plan-night</span> to seed one.</span><span class="aux"></span></div>`;
       return;
     }
 
-    const html = milestones
-      .map(m => {
-        const dur = (m.started_at && m.completed_at)
-          ? fmtDuration((m.completed_at - m.started_at) / 1000)
-          : (m.started_at ? `${fmtRelativePast(m.started_at)}` : '');
-        return `
-          <li class="milestone-row" data-state="${escapeAttr(m.state || 'pending')}">
-            <span class="milestone-icon" aria-hidden="true">${milestoneIcon(m.state)}</span>
-            <span class="milestone-name">${escapeHtml(m.title || '(untitled)')}</span>
-            <span class="milestone-duration">${escapeHtml(dur)}</span>
-          </li>`;
-      })
-      .join('');
-    dom.msList.innerHTML = html;
+    dom.milestonesList.innerHTML = milestones.map(m => {
+      const stateClass = m.state === 'in_progress' ? 'active'
+        : (m.state === 'done' ? 'done' : 'pending');
+      return `
+        <div class="ms-row ${stateClass}">
+          <span class="icon">${milestoneIcon(m.state)}</span>
+          <span class="title">${escapeHtml(m.title || '(untitled)')}</span>
+          <span class="aux">${escapeHtml(milestoneAux(m))}</span>
+        </div>`;
+    }).join('');
   }
 
-  // ─── render: quota timeline ──────────────────────────────
-  function setQuotaBar(fillEl, pctEl, pct) {
-    if (!fillEl || !pctEl) return;
-    const p = clamp(Math.round(pct), 0, 100);
-    fillEl.style.width = `${p}%`;
-    fillEl.classList.toggle('warn', p >= 80);
-    pctEl.textContent = `${p}%`;
+  // ─── decisions ───────────────────────────────────────────
+  function renderDecisionItem(d, marker) {
+    const reasoning = d.reasoning
+      ? `<span class="a"><span class="k">why</span> ${escapeHtml(d.reasoning)}</span>`
+      : '';
+    const rec = d.recommendation
+      ? `<span class="a"><span class="k">${marker === '?' ? 'recommended' : 'chose'}</span> ${escapeHtml(d.recommendation)}</span>`
+      : '';
+    return `
+      <li>
+        <span class="marker ${marker === '?' ? '' : 'dim'}">${marker}</span>
+        <div>
+          <span class="q">${escapeHtml(d.question || '(question missing)')}</span>
+          ${rec}
+          ${reasoning}
+        </div>
+      </li>`;
   }
 
-  function renderQuota(snap, pct5h) {
-    setQuotaBar(dom.quota5hFill, dom.quota5hPct, pct5h);
+  function renderDecisions(blocking, uncertain) {
+    const bCount = blocking.length;
+    const uCount = uncertain.length;
+    setText(dom.decisionsMeta, `${bCount} blocking · ${uCount} to review`);
 
-    // Weekly Sonnet / Opus: v0.1 we don't read state_5.sqlite from the dashboard
-    // (Worker A scope ends at the dashboard surface). Show 0% placeholders so the
-    // bars render visually but don't lie about real numbers.
-    setQuotaBar(dom.quotaSonnetFill, dom.quotaSonnetPct, 0);
-    setQuotaBar(dom.quotaOpusFill,   dom.quotaOpusPct,   0);
+    // Whole card hidden when both are empty — keeps the dashboard calm
+    // overnight when nothing needs attention.
+    dom.decisionsCard.style.display = (bCount + uCount) === 0 ? 'none' : '';
 
-    if (snap.next_quota_reset_at) {
-      setText(dom.quotaReset, `next reset ${fmtRelativeFuture(snap.next_quota_reset_at)}`);
-      const d = new Date(snap.next_quota_reset_at);
-      const hh = d.getHours().toString().padStart(2, '0');
-      const mm = d.getMinutes().toString().padStart(2, '0');
-      setText(dom.quotaFoot, `5h resets at ${hh}:${mm}`);
+    if (bCount === 0) {
+      dom.decisionsBlockingH.hidden = true;
+      dom.decisionsBlockingList.innerHTML = '';
     } else {
-      setText(dom.quotaReset, 'next reset —');
-      setText(dom.quotaFoot, '5h resets —');
+      dom.decisionsBlockingH.hidden = false;
+      dom.decisionsBlockingList.innerHTML =
+        blocking.map(d => renderDecisionItem(d, '?')).join('');
+    }
+
+    if (uCount === 0) {
+      dom.decisionsUncertainH.hidden = true;
+      dom.decisionsUncertainList.innerHTML = '';
+    } else {
+      dom.decisionsUncertainH.hidden = false;
+      dom.decisionsUncertainList.innerHTML =
+        uncertain.map(d => renderDecisionItem(d, '·')).join('');
     }
   }
 
-  // ─── render: decisions + findings (from /api/brief) ──────
+  // ─── findings ────────────────────────────────────────────
+  function renderFindings(items) {
+    const count = items.length;
+    if (count === 0) {
+      setText(dom.findingsMeta, '0 logged');
+      dom.findingsList.innerHTML =
+        `<li><span class="type note">note</span><span class="msg" style="color:var(--text-muted)">No findings logged yet.</span><span class="when"></span></li>`;
+      lastFindingsAtMs = null;
+      return;
+    }
+
+    lastFindingsAtMs = Date.now();
+    setText(dom.findingsMeta, `${count} logged · last just now`);
+
+    dom.findingsList.innerHTML = items.map(f => {
+      const type = (f.type || 'note').toLowerCase();
+      const typeClass = ({
+        bug: 'bug', warning: 'warn', warn: 'warn', insight: 'win', win: 'win',
+      })[type] || 'note';
+      const when = f.created_at
+        ? fmtRelativePast(f.created_at)
+        : '';
+      return `
+        <li>
+          <span class="type ${typeClass}">${escapeHtml(type)}</span>
+          <span class="msg">${escapeHtml(f.content || '')}</span>
+          <span class="when">${escapeHtml(when)}</span>
+        </li>`;
+    }).join('');
+  }
+
+  // ─── quota timeline ──────────────────────────────────────
+  function renderQuota(snap) {
+    // Header — preserve the "<b>0:43</b>" markup from the handback frame.
+    if (snap.next_quota_reset_at) {
+      const diffSec = Math.max(0, Math.round((snap.next_quota_reset_at - Date.now()) / 1000));
+      const relit = snap.quota_windows_relit || 0;
+      const relitSuffix = relit > 0 ? ` · relit ${relit}× tonight` : '';
+      dom.quotaReset.innerHTML =
+        `next refresh in <b>${escapeHtml(fmtDurationShort(diffSec))}</b>${escapeHtml(relitSuffix)}`;
+    } else {
+      dom.quotaReset.innerHTML = `next refresh <b>—</b>`;
+    }
+
+    // Build the segments. Anatomy:
+    //   - one "used" seg per fully-consumed prior window (= quota_windows_relit)
+    //   - one "now" seg covering the current window's used fraction
+    //   - one "refill" seg covering the rest of the current window
+    const relit = snap.quota_windows_relit || 0;
+    const segs = [];
+    for (let i = 0; i < relit; i++) {
+      segs.push(`<div class="seg used" style="flex:5"></div>`);
+    }
+
+    // Current-window position: how far into the 5h window are we?
+    let nowFlex = 0;
+    let refillFlex = 5;
+    if (snap.next_quota_reset_at) {
+      const msToReset = snap.next_quota_reset_at - Date.now();
+      const usedH = Math.max(0, Math.min(5, 5 - msToReset / 3_600_000));
+      nowFlex = usedH;
+      refillFlex = Math.max(0.001, 5 - usedH);
+    } else if (snap.elapsed_seconds && relit === 0) {
+      const hoursIn = snap.elapsed_seconds / 3600;
+      nowFlex = Math.min(5, hoursIn);
+      refillFlex = Math.max(0.001, 5 - nowFlex);
+    }
+    segs.push(`<div class="seg now" style="flex:${nowFlex.toFixed(2)}"></div>`);
+    segs.push(`<div class="seg refill" style="flex:${refillFlex.toFixed(2)}"></div>`);
+    dom.quotaTimeline.innerHTML = segs.join('');
+
+    // Legend: start time · (relit marker if any) · now · wake-or-reset.
+    const start = snap.started_at ? fmtTimeOfDay(snap.started_at) : '—';
+    const now   = fmtTimeOfDay(Date.now());
+    const end   = snap.wake_time ? fmtTimeOfDay(snap.wake_time)
+      : (snap.next_quota_reset_at ? fmtTimeOfDay(snap.next_quota_reset_at) : '—');
+    const middle = relit > 0
+      ? `<span style="color:var(--moon-yellow)">↑ relit ×${relit}</span>`
+      : '';
+    dom.quotaLegend.innerHTML = `
+      <span>${escapeHtml(start)}</span>
+      ${middle}
+      <span style="color:var(--moon-yellow)">now · ${escapeHtml(now)}</span>
+      <span>${escapeHtml(end)}</span>`;
+  }
+
+  // ─── footer ──────────────────────────────────────────────
+  function renderFooterReceipt(sessionId) {
+    if (!sessionId) {
+      dom.footerReceipt.setAttribute('href', '#');
+      return;
+    }
+    dom.footerReceipt.setAttribute('href', `/api/receipt/${encodeURIComponent(sessionId)}`);
+  }
+
+  // ─── render: top-level status snapshot ───────────────────
+  function renderStatus(snap) {
+    if (!snap || snap.state === 'none' || !snap.session_id) {
+      renderEmpty();
+      return;
+    }
+
+    dom.body.dataset.empty = 'false';
+    const stateChanged = lastSessionId !== snap.session_id;
+    lastSessionId = snap.session_id;
+
+    renderStatusPill(snap);
+    renderQuotaPill(snap);
+    renderGoalCard(snap);
+    renderStats(snap);
+    renderMilestones(snap.milestones || []);
+    renderQuota(snap);
+    renderFooterReceipt(snap.session_id);
+
+    // Document title — tiny live signal in the browser tab.
+    const tokenPct = snap.token_budget
+      ? Math.round(((snap.tokens_used || 0) / snap.token_budget) * 100)
+      : null;
+    document.title = tokenPct != null
+      ? `(${tokenPct}%) goalnight · ${STATE_LABEL[snap.state] || snap.state}`
+      : `goalnight · ${STATE_LABEL[snap.state] || snap.state}`;
+
+    // Refetch the brief body if counts shifted, session changed, or 10s old.
+    const decCount  = snap.pending_decisions_count || 0;
+    const findCount = snap.findings_count || 0;
+    if (stateChanged
+        || decCount !== lastDecCount
+        || findCount !== lastFindCount
+        || (Date.now() - lastBriefFetchAt) > 10_000) {
+      lastDecCount = decCount;
+      lastFindCount = findCount;
+      fetchBrief();
+    }
+  }
+
+  function renderEmpty() {
+    dom.body.dataset.empty = 'true';
+    lastSessionId = null;
+    lastDecCount = -1;
+    lastFindCount = -1;
+
+    setText(dom.statusPillText, 'no session');
+    dom.statusPill.classList.remove('active', 'warn');
+    setText(dom.quotaPillText, '—');
+    document.title = 'goalnight · idle';
+    renderFooterReceipt(null);
+  }
+
+  // ─── brief fetch (decisions + findings + uncertain) ──────
   async function fetchBrief() {
     lastBriefFetchAt = Date.now();
     try {
       const r = await fetch('/api/brief', { cache: 'no-store' });
       const d = await r.json();
       if (d && !d.empty) {
-        renderDecisions(d.decisions_awaiting || []);
+        renderDecisions(d.decisions_awaiting || [], d.uncertain_decisions || []);
         renderFindings(d.findings_highlights || []);
       } else {
-        renderDecisions([]);
+        renderDecisions([], []);
         renderFindings([]);
       }
     } catch (err) {
-      // Network blip — keep last paint, just log to console.
       console.warn('[goalnight] brief fetch failed:', err.message);
     }
-  }
-
-  function renderDecisions(items) {
-    const count = items.length;
-    setText(dom.decCount, count === 0 ? '0 pending' : `${count} pending`);
-    dom.decisionsCard.dataset.empty = count === 0 ? 'true' : 'false';
-
-    if (count === 0) {
-      dom.decisionsBody.innerHTML = `<div class="empty-row">Nothing waiting on you right now.</div>`;
-      return;
-    }
-
-    const html = items.map(it => {
-      const rec = it.recommendation
-        ? `<div class="decision-rec"><strong>Suggested:</strong> ${escapeHtml(it.recommendation)}</div>`
-        : '';
-      const reasoning = it.reasoning
-        ? `<div class="decision-rec">${escapeHtml(it.reasoning)}</div>`
-        : '';
-      const blockingChip = it.blocking
-        ? `<span class="decision-blocking">blocking</span>`
-        : '';
-      return `
-        <div class="decision-item">
-          <div class="decision-question">${escapeHtml(it.question || '(question missing)')}</div>
-          ${rec}${reasoning}
-          <div class="decision-meta">
-            ${blockingChip}
-            <span>Awaiting your call</span>
-          </div>
-        </div>`;
-    }).join('');
-    dom.decisionsBody.innerHTML = html;
-  }
-
-  function renderFindings(items) {
-    if (!items || items.length === 0) {
-      dom.findingsList.innerHTML = `<li class="empty-row">No findings logged yet.</li>`;
-      return;
-    }
-    const html = items.map(f => {
-      const type = (f.type || 'note').toLowerCase();
-      const sev  = (f.severity || 'low').toLowerCase();
-      return `
-        <li class="finding-row" data-type="${escapeAttr(type)}" data-severity="${escapeAttr(sev)}">
-          <span class="finding-dot" aria-hidden="true"></span>
-          <div>
-            <div class="finding-meta">
-              <span class="finding-tag">${escapeHtml(type)}</span>
-              <span class="finding-tag">${escapeHtml(sev)}</span>
-            </div>
-            <div class="finding-text">${escapeHtml(f.content || '')}</div>
-          </div>
-        </li>`;
-    }).join('');
-    dom.findingsList.innerHTML = html;
-  }
-
-  // ─── safety: tiny escape helpers (no innerHTML user-string interpolation) ──
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-  function escapeAttr(s) {
-    return escapeHtml(s).replace(/\s+/g, '-');
   }
 
   // ─── SSE wiring ──────────────────────────────────────────
@@ -461,16 +587,16 @@
       es = null;
       clearTimeout(retryTimer);
       retryTimer = setTimeout(connect, retryDelay);
-      retryDelay = Math.min(retryDelay * 2, 15_000); // exp backoff capped at 15s
+      retryDelay = Math.min(retryDelay * 2, 15_000);
     });
   }
 
   // ─── boot ────────────────────────────────────────────────
-  renderEmpty(); // paint default state immediately so the UI is never blank
-  fetchBrief(); // first paint of decisions/findings
-  connect();    // SSE for live status
+  renderEmpty();
+  fetchBrief();
+  connect();
 
-  // gentle visibility-aware: pause SSE when tab hidden to save battery
+  // Gentle visibility-aware: pause SSE when tab hidden to save battery.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       if (es) { try { es.close(); } catch {} es = null; }

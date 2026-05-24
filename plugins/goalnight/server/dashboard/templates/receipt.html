@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>goalnight — overnight receipt</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg-base:        #0d0c0a;
+      --bg-card:        #15130f;
+      --bg-panel:       #1f1c17;
+      --border-hairline:#2a2722;
+      --text-primary:   #ededea;
+      --text-secondary: #a39e93;
+      --text-muted:     #6b6760;
+      --moon-yellow:    #F5B23E;
+      --warm-orange:    #E08550;
+      --font-ui:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    .canvas {
+      width: 1200px;
+      height: 675px;
+      background: var(--bg-base);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-ui);
+      position: relative;
+    }
+    .canvas::before {
+      content: '';
+      position: absolute;
+      width: 600px; height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(245,178,62,0.07) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .paper {
+      width: 480px;
+      padding: 48px 52px 40px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-hairline);
+      border-radius: 6px;
+      color: var(--text-primary);
+      box-shadow: 0 30px 80px -30px rgba(0,0,0,0.55);
+      position: relative;
+      z-index: 1;
+    }
+
+    .head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 36px;
+    }
+    .head .mark { width: 26px; height: 26px; }
+    .head .mark svg { width: 100%; height: 100%; display: block; }
+    .head .brand {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.005em;
+    }
+    .head .spacer { flex: 1; }
+    .head .label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .headline { margin-bottom: 36px; }
+    .headline .k {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-bottom: 10px;
+    }
+    .headline .v {
+      font-family: var(--font-mono);
+      font-size: 64px;
+      font-weight: 500;
+      color: var(--moon-yellow);
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+    .headline .v .u {
+      font-size: 18px;
+      color: var(--text-muted);
+      margin-left: 6px;
+      letter-spacing: 0;
+    }
+    .headline .sub {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 12px;
+    }
+    .headline .sub b {
+      color: var(--moon-yellow);
+      font-weight: 500;
+    }
+
+    .lines { margin: 0 0 32px; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 14px;
+      padding: 10px 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .row + .row { border-top: 1px solid var(--border-hairline); }
+    .row .k {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    .row .v {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+    .row .v.accent { color: var(--moon-yellow); }
+
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding-top: 18px;
+      border-top: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+    }
+    .foot b { color: var(--text-secondary); font-weight: 500; }
+  </style>
+</head>
+<body data-screen-label="receipt-ticket">
+  <div class="canvas">
+    <div class="paper">
+
+      <header class="head">
+        <span class="mark">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="goalnight">
+            <path d="M 70 64 L 60 28 L 92 52 Q 110 46, 120 46 Q 130 46, 148 52 L 180 28 L 170 64 C 195 84, 200 130, 178 152 C 178 168, 170 184, 156 192 C 148 200, 132 206, 120 206 C 108 206, 92 200, 84 192 C 70 184, 62 168, 62 152 C 40 130, 45 84, 70 64 Z" fill="#ededea"></path>
+            <path d="M 70 92 Q 95 76, 120 84 Q 145 76, 170 92 Q 178 124, 158 142 Q 140 152, 120 148 Q 100 152, 82 142 Q 62 124, 70 92 Z" fill="#d8d4cc" opacity="0.55"></path>
+            <circle cx="94" cy="114" r="16" fill="#F5B23E"></circle>
+            <circle cx="146" cy="114" r="16" fill="#F5B23E"></circle>
+            <g stroke="#0d0c0a" stroke-width="2.6" fill="none" stroke-linecap="round">
+              <circle cx="94" cy="114" r="16"></circle>
+              <circle cx="146" cy="114" r="16"></circle>
+              <path d="M 110 114 L 130 114"></path>
+              <path d="M 78 114 Q 70 110, 64 108"></path>
+              <path d="M 162 114 Q 170 110, 176 108"></path>
+            </g>
+            <defs>
+              <clipPath id="lensL"><circle cx="94" cy="114" r="14.5"></circle></clipPath>
+              <clipPath id="lensR"><circle cx="146" cy="114" r="14.5"></circle></clipPath>
+            </defs>
+            <g clip-path="url(#lensL)" fill="#0d0c0a" opacity="0.7">
+              <rect x="82" y="106" width="11" height="1.8"></rect>
+              <rect x="82" y="111" width="17" height="1.8"></rect>
+              <rect x="82" y="116" width="8" height="1.8"></rect>
+              <rect x="82" y="121" width="13" height="1.8"></rect>
+            </g>
+            <g clip-path="url(#lensR)" fill="#0d0c0a" opacity="0.7">
+              <rect x="134" y="106" width="14" height="1.8"></rect>
+              <rect x="134" y="111" width="8" height="1.8"></rect>
+              <rect x="134" y="116" width="17" height="1.8"></rect>
+              <rect x="134" y="121" width="11" height="1.8"></rect>
+            </g>
+            <circle cx="94" cy="116" r="2.4" fill="#0d0c0a"></circle>
+            <circle cx="146" cy="116" r="2.4" fill="#0d0c0a"></circle>
+            <path d="M 120 138 Q 114 144, 116 152 Q 120 156, 124 152 Q 126 144, 120 138 Z" fill="#0d0c0a"></path>
+          </svg>
+        </span>
+        <span class="brand">goalnight</span>
+        <span class="spacer"></span>
+        <span class="label">overnight receipt</span>
+      </header>
+
+      <div class="headline">
+        <div class="k">{{headline_label}}</div>
+        <div class="v">{{headline_value}}<span class="u">tok</span></div>
+        <div class="sub">{{headline_sub}}</div>
+      </div>
+
+      <div class="lines">
+        <div class="row">
+          <span class="k">overnight</span>
+          <span class="v">{{line_overnight}}</span>
+        </div>
+        <div class="row">
+          <span class="k">milestones</span>
+          <span class="v accent">{{line_milestones}}</span>
+        </div>
+        <div class="row">
+          <span class="k">decisions</span>
+          <span class="v">{{line_decisions}}</span>
+        </div>
+        <div class="row">
+          <span class="k">findings</span>
+          <span class="v">{{line_findings}}</span>
+        </div>
+      </div>
+
+      <div class="foot">
+        <span>session {{foot_session_short}}</span>
+        <span><b>{{foot_brand_url}}</b></span>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="goalnight">
+  
+  <path d="M4.6 4.2 L4 1.8 L6.1 3.5 Q7 3.2, 8 3.2 Q9 3.2, 10 3.5 L12 1.8 L11.4 4.2&#xA;           C13 5.5, 13.3 8.6, 11.9 10&#xA;           C11.9 11.1, 11.3 12.2, 10.4 12.8&#xA;           C9.9 13.3, 8.8 13.7, 8 13.7&#xA;           C7.2 13.7, 6.1 13.3, 5.6 12.8&#xA;           C4.7 12.2, 4.1 11.1, 4.1 10&#xA;           C2.7 8.6, 3 5.5, 4.6 4.2 Z" fill="#ededea"></path>
+  <circle cx="6.25" cy="7.6" r="1.6" fill="#F5B23E"></circle>
+  <circle cx="9.75" cy="7.6" r="1.6" fill="#F5B23E"></circle>
+  <circle cx="6.25" cy="7.7" r="0.5" fill="#0d0c0a"></circle>
+  <circle cx="9.75" cy="7.7" r="0.5" fill="#0d0c0a"></circle>
+  <path d="M8 9.2 L7.5 9.8 L8 10.4 L8.5 9.8 Z" fill="#0d0c0a"></path>
+</svg>

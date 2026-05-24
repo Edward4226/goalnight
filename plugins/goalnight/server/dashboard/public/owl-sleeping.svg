@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="goalnight — sleeping">
+  
+  <path d="M100 36&#xA;           C 56 36, 28 68, 28 110&#xA;           C 28 150, 58 174, 100 174&#xA;           C 142 174, 172 150, 172 110&#xA;           C 172 68, 144 36, 100 36 Z" fill="#ededea"></path>
+
+  <path d="M48 60 L40 28 L72 50 Z" fill="#ededea"></path>
+  <path d="M152 60 L160 28 L128 50 Z" fill="#ededea"></path>
+
+  
+  <path d="M60 102 Q 74 92, 88 102" fill="none" stroke="#F5B23E" stroke-width="3.6" stroke-linecap="round"></path>
+  <path d="M112 102 Q 126 92, 140 102" fill="none" stroke="#F5B23E" stroke-width="3.6" stroke-linecap="round"></path>
+
+  
+  <path d="M100 124 L94 132 L100 138 L106 132 Z" fill="#0d0c0a"></path>
+
+  
+  <g fill="#F5B23E" font-family="&#39;JetBrains Mono&#39;, monospace" font-weight="500">
+    <text x="158" y="66" font-size="13" opacity="0.5">z</text>
+    <text x="168" y="50" font-size="17" opacity="0.75">z</text>
+    <text x="180" y="34" font-size="22">Z</text>
+  </g>
+</svg>

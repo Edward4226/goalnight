@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="goalnight — G5 · code reflection in glasses">
+  
+
+  <g fill="none" stroke="#ededea" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 70 64 L 60 28 L 92 52 Q 110 46, 120 46 Q 130 46, 148 52 L 180 28 L 170 64&#xA;             C 195 84, 200 130, 178 152&#xA;             C 178 168, 170 184, 156 192&#xA;             C 148 200, 132 206, 120 206&#xA;             C 108 206, 92 200, 84 192&#xA;             C 70 184, 62 168, 62 152&#xA;             C 40 130, 45 84, 70 64 Z"></path>
+    <path d="M 70 92 Q 95 76, 120 84 Q 145 76, 170 92 Q 178 124, 158 142&#xA;             Q 140 152, 120 148 Q 100 152, 82 142 Q 62 124, 70 92 Z" stroke-width="2.2" opacity="0.7"></path>
+    <path d="M 72 158 Q 78 184, 100 196" stroke-width="2.4" opacity="0.55"></path>
+    <path d="M 168 158 Q 162 184, 140 196" stroke-width="2.4" opacity="0.55"></path>
+  </g>
+
+  
+  <g stroke="#ededea" stroke-width="2.4">
+    <circle cx="94" cy="114" r="16" fill="#F5B23E" fill-opacity="0.35"></circle>
+    <circle cx="146" cy="114" r="16" fill="#F5B23E" fill-opacity="0.35"></circle>
+    <path d="M 110 114 L 130 114" fill="none" stroke-linecap="round"></path>
+    <path d="M 78 114 Q 70 110, 64 108" fill="none" stroke-linecap="round"></path>
+    <path d="M 162 114 Q 170 110, 176 108" fill="none" stroke-linecap="round"></path>
+  </g>
+
+  
+  <defs>
+    <clipPath id="leftG5"><circle cx="94" cy="114" r="15"></circle></clipPath>
+    <clipPath id="rightG5"><circle cx="146" cy="114" r="15"></circle></clipPath>
+  </defs>
+  <g clip-path="url(#leftG5)">
+    <rect x="82" y="105" width="11" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="82" y="110" width="18" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="82" y="115" width="8" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="82" y="120" width="14" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="82" y="125" width="6" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+  </g>
+  <g clip-path="url(#rightG5)">
+    <rect x="134" y="105" width="14" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="134" y="110" width="8" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="134" y="115" width="18" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="134" y="120" width="6" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+    <rect x="134" y="125" width="12" height="1.6" fill="#0d0c0a" opacity="0.65"></rect>
+  </g>
+
+  
+  <circle cx="94" cy="116" r="2.2" fill="#0d0c0a"></circle>
+  <circle cx="146" cy="116" r="2.2" fill="#0d0c0a"></circle>
+
+  <path d="M 120 138 Q 114 144, 116 152 Q 120 156, 124 152 Q 126 144, 120 138 Z" fill="#0d0c0a"></path>
+  <g stroke="#ededea" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7">
+    <path d="M 100 206 L 98 214"></path><path d="M 108 206 L 110 214"></path>
+    <path d="M 132 206 L 130 214"></path><path d="M 140 206 L 142 214"></path>
+  </g>
+</svg>
