@@ -17,22 +17,6 @@ You sleep 8h. Your tokens refresh at hour 5. They sit there. They expire.
 
 ---
 
-## Why this exists
-
-OpenAI sells subscriptions. Their incentive isn't to help you drain them. Like a gym: the less you show up, the better the unit economics.
-
-So official `/goal` doesn't go out of its way to squeeze your quota dry. The engineering is solid, but a few things they *structurally* won't do:
-
-- they won't compute how much token budget your sleep window can afford
-- they won't relight the task the second your quota refreshes at 3am
-- they won't hand you a morning brief that's actually three seconds to read
-
-You already paid for the tokens. There's no good reason 3 of your 8 sleeping hours should be quota evaporating into the dark.
-
-That's the gap goalnight fills.
-
----
-
 ## Install
 
 One-liner (recommended):
