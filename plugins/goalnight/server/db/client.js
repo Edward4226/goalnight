@@ -44,9 +44,27 @@ export function getDb() {
     const schemaPath = join(__dirname, 'schema.sql');
     const schema = readFileSync(schemaPath, 'utf8');
     _db.exec(schema);
+  } else {
+    applyMigrations(_db);
   }
 
   return _db;
+}
+
+// Idempotent ALTERs for columns added after the initial schema shipped.
+// sqlite throws on duplicate-column ADD; we swallow that and only that.
+function applyMigrations(db) {
+  const migrations = [
+    "ALTER TABLE milestones ADD COLUMN verification_command TEXT",
+    "ALTER TABLE milestones ADD COLUMN verification_status TEXT DEFAULT 'pending'",
+    "ALTER TABLE milestones ADD COLUMN verification_output TEXT",
+    "ALTER TABLE milestones ADD COLUMN verified_at INTEGER",
+  ];
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
+  }
 }
 
 export function closeDb() {

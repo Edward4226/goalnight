@@ -16,6 +16,7 @@
  */
 
 import { getDb, uuid, now } from '../db/client.js';
+import { validateVerifyCommand } from '../audit/runner.js';
 
 const DEFAULT_QUOTA = parseInt(process.env.GOALNIGHT_QUOTA_PER_PERIOD || '200000', 10);
 
@@ -59,8 +60,31 @@ survive context compaction.`,
       },
       milestones: {
         type: 'array',
-        items: { type: 'string' },
-        description: 'Ordered list of milestone titles (3-8 recommended).',
+        items: {
+          oneOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                verify: {
+                  type: 'string',
+                  description:
+                    'Optional shell command checked by the audit gate before the morning brief renders. ' +
+                    'Must start with one of: "gh ", "git ", "test ", "npm ". No shell metacharacters ' +
+                    '(| & ; > < $ ` parens). Exit 0 = verified, non-zero = failed, timeout/spawn-err = unknown. ' +
+                    'Example: "test -f path/to/output.json", "git log -1 --grep=feat/x", "npm test".',
+                },
+              },
+              required: ['title'],
+              additionalProperties: false,
+            },
+          ],
+        },
+        description:
+          'Ordered list of milestones (3-8 recommended). Each item is either a plain title string, ' +
+          'or an object { title, verify? }. Provide a verify cmd whenever the milestone is checkable ' +
+          '(file created / test green / commit landed) — it lets the morning brief flag false completions.',
       },
       quiet_hours: {
         type: 'string',
@@ -75,11 +99,11 @@ export async function planNight(args) {
   const objective = args.objective?.trim();
   const hours = args.hours ?? 8;
   const targetPct = args.target_quota_pct ?? 0.8;
-  const milestones = args.milestones ?? [];
+  const rawMilestones = args.milestones ?? [];
   const quietHours = args.quiet_hours ?? null;
 
   if (!objective) throw new Error('objective is required');
-  if (!Array.isArray(milestones) || milestones.length === 0) {
+  if (!Array.isArray(rawMilestones) || rawMilestones.length === 0) {
     throw new Error('milestones must contain at least 1 item');
   }
   if (targetPct <= 0 || targetPct > 1) {
@@ -89,13 +113,32 @@ export async function planNight(args) {
     validateQuietHours(quietHours);
   }
 
+  // Normalize: each milestone is either a string (legacy) or { title, verify? }.
+  // Fail fast on bad verify cmds here — better than silently dropping them.
+  const milestones = rawMilestones.map((m, idx) => {
+    if (typeof m === 'string') return { title: m, verify: null };
+    if (m && typeof m === 'object' && typeof m.title === 'string') {
+      const verify = m.verify ?? null;
+      if (verify !== null) {
+        try { validateVerifyCommand(verify); }
+        catch (e) { throw new Error(`milestones[${idx}].verify: ${e.message}`); }
+      }
+      return { title: m.title, verify };
+    }
+    throw new Error(`milestones[${idx}] must be a string or { title, verify? } object`);
+  });
+
   const tokenBudget = Math.round((hours / 5) * DEFAULT_QUOTA * targetPct);
   const tokensPerMilestone = Math.round(tokenBudget / milestones.length);
 
   const db = getDb();
-  // Backward-compat: existing DBs may lack the quiet_hours column. ALTER is
-  // idempotent — sqlite throws on duplicate add, which the catch swallows.
+  // Backward-compat: existing DBs may lack newer columns. ALTER is idempotent
+  // — sqlite throws on duplicate add, which the catch swallows.
   try { db.exec('ALTER TABLE sessions ADD COLUMN quiet_hours TEXT'); } catch {}
+  try { db.exec('ALTER TABLE milestones ADD COLUMN verification_command TEXT'); } catch {}
+  try { db.exec("ALTER TABLE milestones ADD COLUMN verification_status TEXT DEFAULT 'pending'"); } catch {}
+  try { db.exec('ALTER TABLE milestones ADD COLUMN verification_output TEXT'); } catch {}
+  try { db.exec('ALTER TABLE milestones ADD COLUMN verified_at INTEGER'); } catch {}
 
   const sessionId = uuid();
   const ts = now();
@@ -108,12 +151,20 @@ export async function planNight(args) {
   insertSession.run(sessionId, objective, hours, targetPct, quietHours, tokenBudget, ts, ts);
 
   const insertMilestone = db.prepare(`
-    INSERT INTO milestones (id, session_id, title, estimated_tokens, ordinal, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO milestones
+      (id, session_id, title, estimated_tokens, ordinal, verification_command, verification_status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertMany = db.transaction(items => {
-    items.forEach((title, idx) => {
-      insertMilestone.run(uuid(), sessionId, title, tokensPerMilestone, idx + 1, ts);
+    items.forEach((m, idx) => {
+      // verification_status starts 'pending' if a verify cmd exists, otherwise
+      // 'skipped' — so the morning brief audit pass can distinguish "no check
+      // configured" from "check hasn't run yet".
+      const initialStatus = m.verify ? 'pending' : 'skipped';
+      insertMilestone.run(
+        uuid(), sessionId, m.title, tokensPerMilestone, idx + 1,
+        m.verify, initialStatus, ts,
+      );
     });
   });
   insertMany(milestones);
@@ -122,10 +173,11 @@ export async function planNight(args) {
     session_id: sessionId,
     objective,
     estimated_token_budget: tokenBudget,
-    milestones: milestones.map((title, idx) => ({
+    milestones: milestones.map((m, idx) => ({
       ordinal: idx + 1,
-      title,
+      title: m.title,
       estimated_tokens: tokensPerMilestone,
+      verify: m.verify,
     })),
     quota_periods_covered: +(hours / 5).toFixed(2),
     // Informational only. goalnight tracks progress independently of codex's

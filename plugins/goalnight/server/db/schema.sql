@@ -33,15 +33,23 @@ CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
 -- milestones: planned subtasks for a session
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS milestones (
-  id                TEXT PRIMARY KEY,
-  session_id        TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  title             TEXT NOT NULL,
-  estimated_tokens  INTEGER,
-  ordinal           INTEGER NOT NULL,           -- display order
-  state             TEXT DEFAULT 'pending',     -- pending|in_progress|done|skipped
-  started_at        INTEGER,
-  completed_at      INTEGER,
-  created_at        INTEGER NOT NULL
+  id                    TEXT PRIMARY KEY,
+  session_id            TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  title                 TEXT NOT NULL,
+  estimated_tokens      INTEGER,
+  ordinal               INTEGER NOT NULL,           -- display order
+  state                 TEXT DEFAULT 'pending',     -- pending|in_progress|done|skipped
+  -- Optional shell command run by the audit gate before morning_brief renders.
+  -- Must start with one of: gh / git / test / npm. Shell metachars rejected.
+  verification_command  TEXT,
+  -- Result of the most recent audit pass for this milestone. Tri-state:
+  --   pending (never audited) | verified | failed | unknown (timeout/spawn err)
+  verification_status   TEXT DEFAULT 'pending',
+  verification_output   TEXT,                       -- captured stdout+stderr (truncated)
+  verified_at           INTEGER,
+  started_at            INTEGER,
+  completed_at          INTEGER,
+  created_at            INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_milestones_session ON milestones(session_id);

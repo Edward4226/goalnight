@@ -12,6 +12,7 @@
  */
 
 import { getDb } from '../db/client.js';
+import { auditMilestones } from '../audit/runner.js';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,6 +67,18 @@ export async function morningBrief(args) {
 
   if (!session) throw new Error('No goalnight session found.');
 
+  // Run the audit gate BEFORE we read milestones for rendering, so verification
+  // status reflects reality at brief-time. Failures here trump everything else
+  // in the layout — surfacing them at the top is the entire point.
+  let audit = { audited: 0, failures: [], unknowns: [] };
+  try {
+    audit = await auditMilestones(session.id);
+  } catch (err) {
+    // Audit must never block the brief. If something exploded (e.g. DB shape
+    // off after a partial migration), log and continue with empty results.
+    console.error('[goalnight] audit gate failed:', err.message);
+  }
+
   const milestones = db
     .prepare('SELECT title, state FROM milestones WHERE session_id = ? ORDER BY ordinal')
     .all(session.id);
@@ -118,7 +131,9 @@ export async function morningBrief(args) {
   const mins = Math.floor((durationSec % 3600) / 60);
   const durationHuman = `${hours}h ${mins}m`;
 
-  const summary = buildOneLiner(session, milestones, milestonesDone, decisions, uncertainDecisions);
+  const summary = buildOneLiner(
+    session, milestones, milestonesDone, decisions, uncertainDecisions, audit.failures,
+  );
 
   const allDecisions = db
     .prepare('SELECT blocking FROM decisions WHERE session_id = ?')
@@ -150,6 +165,9 @@ export async function morningBrief(args) {
     uncertain_decisions: uncertainDecisions,
     findings_highlights: findings,
     receipt_data: receiptData,
+    verification_failures: audit.failures,
+    verification_unknowns: audit.unknowns,
+    verification_audited: audit.audited,
   };
 
   let markdown;
@@ -163,14 +181,19 @@ export async function morningBrief(args) {
   return { ...data, markdown };
 }
 
-function buildOneLiner(session, milestones, done, decisions, uncertainDecisions = []) {
+function buildOneLiner(session, milestones, done, decisions, uncertainDecisions = [], failures = []) {
   const total = milestones.length;
   const doneCount = done.length;
   const decisionCount = decisions.length;
   const uncertainCount = uncertainDecisions.length;
+  const failureCount = failures.length;
+  // Verification failures lead — "5 of 5 done" means nothing if 2 don't verify.
+  const failureNote = failureCount > 0
+    ? ` ⚠️ ${failureCount} claimed-done milestone${failureCount > 1 ? 's' : ''} failed verification.`
+    : '';
   const decisionNote = decisionCount > 0 ? ` ${decisionCount} decision${decisionCount > 1 ? 's' : ''} need you.` : '';
   const uncertainNote = uncertainCount > 0 ? ` ${uncertainCount} to double-check.` : '';
-  const tail = `${decisionNote}${uncertainNote}`;
+  const tail = `${failureNote}${decisionNote}${uncertainNote}`;
 
   switch (session.state) {
     case 'complete':
@@ -281,6 +304,36 @@ function buildFallbackBrief(d) {
   lines.push(`**Goal:** ${d.objective}`);
   lines.push(`**Status:** ${d.status}  ·  **Time:** ${d.duration_human}  ·  **Tokens:** ${d.tokens_used}${d.token_budget ? ` / ${d.token_budget}` : ''}`);
   lines.push('');
+
+  // Verification failures lead — these are "the model said done but check
+  // disagrees". Higher signal than any decision because they indicate the
+  // claimed progress isn't real.
+  if (d.verification_failures && d.verification_failures.length > 0) {
+    lines.push(`## ⚠️ Claimed done but verification failed (${d.verification_failures.length})`);
+    lines.push('These milestones were marked done overnight but their verify command rejected. Treat as not actually done until you eyeball them.');
+    lines.push('');
+    for (const f of d.verification_failures) {
+      lines.push(`- **#${f.ordinal} ${f.title}**`);
+      lines.push(`  - _Check:_ \`${f.command}\``);
+      if (f.output) {
+        const oneLine = String(f.output).split('\n').filter(Boolean).slice(0, 3).join(' · ');
+        lines.push(`  - _Output:_ ${oneLine}`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Unknowns rendered separately + muted — "couldn't run the check" is not
+  // the same as "the work is wrong". Common cause: laptop slept, network died.
+  if (d.verification_unknowns && d.verification_unknowns.length > 0) {
+    lines.push(`## 🟡 Verification couldn't run (${d.verification_unknowns.length})`);
+    lines.push('The check command errored or timed out — the work itself may be fine, but we couldn\'t confirm. Worth re-running manually.');
+    lines.push('');
+    for (const u of d.verification_unknowns) {
+      lines.push(`- **#${u.ordinal} ${u.title}** — \`${u.command}\``);
+    }
+    lines.push('');
+  }
 
   if (d.decisions_awaiting.length > 0) {
     lines.push(`## ⚠️ Decisions waiting for you (${d.decisions_awaiting.length})`);

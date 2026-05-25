@@ -30,11 +30,36 @@ You have access to the **goalnight** plugin: a thin layer that makes Codex `/goa
 User says something like `goalnight 8h, implement user-profile feature` or `@goalnight plan 8h to <goal>`.
 
 1. **First, break the goal into 3-8 ordered milestones in your head.** Plan thoughtfully — these get persisted and will guide your work all night.
-2. **If the user mentions wanting quiet hours, a do-not-disturb window, or "don't wake me up"** (e.g. "quiet hours 22:00-07:00", "don't ping me overnight"), extract a `quiet_hours` argument in `"HH:MM-HH:MM"` 24-hour format. Omit if not stated. Non-critical notifications inside the window are suppressed and surface in the morning brief instead.
-3. Call `gn_plan_night({ objective, hours, milestones: [...], quiet_hours? })`.
-4. The response has a `codex_goal_command` field. **Execute it** — this hands the objective to codex's native `/goal` system.
-5. Reply to the user in ONE LINE: `Planned. {N} milestones. Budget: {tokens} tokens. Dashboard: {url}. Good night.`
-6. Stop. The user closes the laptop.
+2. **For each milestone, decide if it's externally checkable.** A milestone is checkable when "is it done?" can be answered by a short shell command — file exists, test passes, commit landed, build green. If yes, attach a `verify` command (see below). If the milestone is research-y / abstract ("understand the X module"), leave verify off.
+3. **If the user mentions wanting quiet hours, a do-not-disturb window, or "don't wake me up"** (e.g. "quiet hours 22:00-07:00", "don't ping me overnight"), extract a `quiet_hours` argument in `"HH:MM-HH:MM"` 24-hour format. Omit if not stated. Non-critical notifications inside the window are suppressed and surface in the morning brief instead.
+4. Call `gn_plan_night({ objective, hours, milestones: [...], quiet_hours? })`.
+5. The response has a `codex_goal_command` field. **Execute it** — this hands the objective to codex's native `/goal` system.
+6. Reply to the user in ONE LINE: `Planned. {N} milestones. Budget: {tokens} tokens. Dashboard: {url}. Good night.`
+7. Stop. The user closes the laptop.
+
+#### Milestone shape — strings or `{title, verify}` objects
+
+Each milestone in the array is either a plain string (legacy, no verification) or `{ title: "...", verify: "..." }`. Mix freely. Example:
+
+```json
+{
+  "milestones": [
+    "research the existing auth module",
+    { "title": "scaffold the new login route", "verify": "test -f src/routes/login.ts" },
+    { "title": "tests pass", "verify": "npm test" },
+    { "title": "commit landed", "verify": "git log -1 --grep=feat/login" }
+  ]
+}
+```
+
+**Verify command rules** — failing fast at plan time, so get them right:
+
+- Must start with one of: `gh `, `git `, `test `, `npm ` (trailing space matters)
+- No shell metacharacters: `|`, `&`, `;`, `<`, `>`, `$`, backtick, parens, newlines — pipes/redirects are not supported
+- Exit 0 = verified · non-zero = failed · timeout / spawn-error = unknown
+- 10s timeout, no shell expansion (so no `$HOME`, `~`, or globs — use literal paths)
+
+The morning brief will surface any "claimed done but verify failed" milestones at the top — these are the model's false-positive completions. Skip verify for fuzzy/research milestones where no command can adjudicate.
 
 ### Phase 2: During execution (every continuation turn)
 
