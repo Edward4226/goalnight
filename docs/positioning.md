@@ -7,41 +7,31 @@
 
 ## Core Narrative（核心叙事）
 
-Codex `/goal` 是 OpenAI 给长任务做的"自动续轮"模式。但它有个用户看不到、官方不说的真相：
+Codex `/goal` 是给长任务做的"自动续轮"模式。它工作得很好——但有一个细节：
+撞到 5h token quota 时，它会**自动暂停**。然后就这样停着，等用户回来恢复。
 
-**用完你的 5h quota 后，它会自动暂停——然后就这样停在那里。**
+如果用户在场，这很合理。但如果是过夜场景：
 
-不通知你。
-不在 quota 重置的那一刻接力。
-不告诉你停在哪一步。
+- 用户睡着了 8 小时，跨过 ~1.6 个 quota 周期
+- 实际只用了第一个周期就停了
+- 剩下的 0.6 个周期不会被用上
 
-你睡着了，task 也跟着死等。
-你 8 小时跨越的 1.6 个 quota 周期里，**只用了 1 个**。
-剩下 0.6 个周期的额度——你付了钱的那 0.6 个——**直接蒸发**。
+**goalnight 就是补这个过夜场景的工具。**
 
-**goalnight 就是把那 0.6 个周期接回来的工具。**
-
-它在 quota 重置那一秒自动接力、自动通知、自动 wrap up，
-把你睡觉时本会浪费的 token 全部用上。
+它在 quota 重置那一秒自动接力 codex 的 `/goal` session，醒来给一份 30 秒看懂的报告，把用户睡觉时段的 token 用满。
 
 ---
 
-## The "Gym Membership" Insight（健身房会员心理）
+## What goalnight does that official `/goal` doesn't
 
-OpenAI 卖订阅，他们的利益不在你用满。
-就像健身房：**会员越不去，越赚**。
+官方 `/goal` 工程很扎实，覆盖了大部分情况。goalnight 在它之上补四件事，**针对"用户睡着了"这个特殊窗口**：
 
-所以官方 `/goal` 不会主动帮你榨干 quota。
-他们工程做得很扎实，但有些事**他们结构性不会做**：
+- 帮用户**估算**：8 小时睡眠时间能匹配多少 token budget、能跑几个 milestone
+- **主动接力**：quota 重置那一秒自动 resume，跨多个 5h 周期推进
+- **晨间报告**：醒来 30 秒看懂——什么完成了、什么阻塞了、什么需要你拍板
+- **决策缓存**：模型遇到拍板点不擅自决策，记下来让用户早上一并审
 
-- 不会教你怎么算睡眠时长对应多少 token
-- 不会在 quota 重置时主动叫醒任务
-- 不会在你睡前问"你真的要让它去试吗？"
-- 不会在你醒来时给你一份让你三秒看懂的报告
-
-**这些事得有人替你做。**
-
-你已经付了钱。凭什么你睡觉的 8 小时里有 3 小时的 quota 在打水漂？
+这四件事都是"用户在场"的工具不需要、"用户睡着"的工具必须有的功能。
 
 ---
 
@@ -95,9 +85,9 @@ OpenAI 卖订阅，他们的利益不在你用满。
 - "don't let your tokens sleep with you."
 - "goalnight everybody!"（mascot 旁边小字）
 
-**反向 tagline（HN 标题）**：
-- "Codex /goal pauses at quota limit. We made it not."
-- "Your Codex subscription has a graveyard shift. We work it."
+**Show HN / 投放渠道候选**：
+- "Show HN: goalnight — overnight goal execution for Codex CLI"
+- "Show HN: I built a Codex plugin that picks up where /goal pauses overnight"
 
 ---
 
