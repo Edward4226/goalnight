@@ -4,7 +4,7 @@ import { freshDb, cleanupDb } from '../_helpers/db.mjs';
 import { planNight } from '../../server/tools/plan_night.js';
 import { logDecision } from '../../server/tools/log_decision.js';
 import { logFinding } from '../../server/tools/log_finding.js';
-import { buildRecap } from '../../server/recap/builder.js';
+import { buildRecap, __test__ } from '../../server/recap/builder.js';
 import { getDb } from '../../server/db/client.js';
 
 let dataDir;
@@ -204,6 +204,25 @@ test('buildRecap: returns empty string when called with falsy db or session', ()
   assert.equal(buildRecap({ db: null, session: { id: 'x' } }), '');
   assert.equal(buildRecap({ db: {}, session: null }), '');
   assert.equal(buildRecap({}), '');
+});
+
+test('formatTokenBurn: normal rate within budget reports thousands-separated tok/min · on track', () => {
+  // 60_000 tokens over 50 minutes (3_000_000 ms) → 1,200 tok/min, under a 100k budget.
+  const line = __test__.formatTokenBurn(60_000, 50 * 60_000, 100_000);
+  assert.equal(line, 'burn rate ~1,200 tok/min · on track');
+});
+
+test('formatTokenBurn: zero elapsed does not divide by zero (no NaN/Infinity)', () => {
+  const line = __test__.formatTokenBurn(5_000, 0, 100_000);
+  assert.equal(line, 'burn rate ~0 tok/min · on track');
+  assert.doesNotMatch(line, /NaN|Infinity/);
+});
+
+test('formatTokenBurn: over budget switches the suffix to · over budget', () => {
+  // 120k used against a 100k budget → over budget.
+  const line = __test__.formatTokenBurn(120_000, 60 * 60_000, 100_000);
+  assert.match(line, /tok\/min · over budget$/);
+  assert.match(line, /burn rate ~2,000 tok\/min/);
 });
 
 test('buildRecap: realistic full-session fixture stays under 3000 chars', async () => {

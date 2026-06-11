@@ -196,6 +196,17 @@ function formatTokenLine(used, budget) {
   return '';
 }
 
+function formatTokenBurn(tokensUsed, elapsedMs, tokenBudget) {
+  const used = Number.isFinite(tokensUsed) ? tokensUsed : 0;
+  // Guard divide-by-zero: a 0ms (or invalid) window means we can't yet compute
+  // a rate, so report 0 tok/min rather than NaN/Infinity.
+  const minutes = Number.isFinite(elapsedMs) && elapsedMs > 0 ? elapsedMs / 60_000 : 0;
+  const ratePerMin = minutes > 0 ? Math.round(used / minutes) : 0;
+  const rateStr = ratePerMin.toLocaleString('en-US');
+  const onTrack = !(Number.isFinite(tokenBudget) && tokenBudget > 0 && used > tokenBudget);
+  return `burn rate ~${rateStr} tok/min · ${onTrack ? 'on track' : 'over budget'}`;
+}
+
 function sanitize(s) {
   if (s == null) return '';
   // Strip control chars except newline/tab; collapse newlines so a logged
@@ -207,4 +218,4 @@ function sanitize(s) {
     .trim();
 }
 
-export const __test__ = { formatElapsed, formatTokenLine, sanitize, SOFT_CHAR_BUDGET, MAX_FINDINGS };
+export const __test__ = { formatElapsed, formatTokenLine, formatTokenBurn, sanitize, SOFT_CHAR_BUDGET, MAX_FINDINGS };
